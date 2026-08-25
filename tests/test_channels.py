@@ -21,6 +21,7 @@ from kiro_bot.channels import (
     generic_event,
     github_event,
     slack_event,
+    telegram_event,
     verify_kiro_webhook,
     verify_sha256,
     verify_slack,
@@ -134,6 +135,42 @@ def test_provider_normalizers_keep_thread_identity_and_ignore_noise(tmp_path: Pa
     )
     assert generic.context == {"ticket": 9}
 
+    telegram_binding = _binding(
+        channels,
+        binding_id="telegram",
+        kind="telegram",
+        allowed_senders=("111",),
+        trigger_prefix="",
+    )
+    telegram = telegram_event(
+        {
+            "update_id": 88,
+            "message": {
+                "message_id": 7,
+                "from": {"id": 111, "username": "arin", "is_bot": False},
+                "chat": {"id": 111, "type": "private"},
+                "text": "inspect the failing test",
+            },
+        },
+        telegram_binding,
+    )
+    assert telegram is not None and telegram.thread_key == "111" and telegram.sender == "111"
+    assert (
+        telegram_event(
+            {
+                "update_id": 89,
+                "message": {
+                    "message_id": 8,
+                    "from": {"id": 111, "is_bot": False},
+                    "chat": {"id": -100, "type": "supergroup"},
+                    "text": "ignore this group chatter",
+                },
+            },
+            telegram_binding,
+        )
+        is None
+    )
+
 
 def test_whatsapp_binding_normalization_and_delivery(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -200,6 +237,111 @@ def test_whatsapp_binding_normalization_and_delivery(
     assert calls[0][1]["to"] == "919999999999"
     assert calls[0][1]["context"] == {"message_id": "wamid.1"}
     assert calls[0][2]["Authorization"] == "Bearer access-token"
+
+
+def test_telegram_requires_sender_allow_list_and_delivers_to_official_api(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, channels = _channels(tmp_path)
+    with pytest.raises(ValueError, match="allowed sender"):
+        _binding(channels, binding_id="tg-invalid", kind="telegram")
+    binding = _binding(
+        channels,
+        binding_id="telegram",
+        kind="telegram",
+        signing_secret_env="KIRO_TG_TOKEN",
+        allowed_senders=("111",),
+        trigger_prefix="",
+    )
+    incoming = telegram_event(
+        {
+            "update_id": 10,
+            "message": {
+                "message_id": 4,
+                "from": {"id": 111, "is_bot": False},
+                "chat": {"id": 111, "type": "private"},
+                "text": "ship it",
+            },
+        },
+        binding,
+    )
+    assert incoming is not None
+    event, _ = channels.accept(binding, incoming)
+    calls: list[tuple[str, str, dict[str, Any]]] = []
+
+    def fake_call(token: str, method: str, payload: dict[str, Any] | None = None) -> object:
+        calls.append((token, method, dict(payload or {})))
+        return True
+
+    monkeypatch.setenv("KIRO_TG_TOKEN", "123456789:AAExampleTokenValueHere12345")
+    monkeypatch.setattr("kiro_bot.channels._telegram_call", fake_call)
+    asyncio.run(ProviderReplyDeliverer().deliver(binding, event, "done"))
+    assert calls[0][1] == "sendMessage"
+    assert calls[0][2]["chat_id"] == 111
+    assert calls[0][2]["text"] == "done"
+
+
+def test_telegram_poller_ingests_allowed_private_messages(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def scenario() -> None:
+        _, channels = _channels(tmp_path)
+        binding = _binding(
+            channels,
+            binding_id="telegram",
+            kind="telegram",
+            signing_secret_env="KIRO_TG_TOKEN",
+            allowed_senders=("111",),
+            trigger_prefix="",
+        )
+        monkeypatch.setenv("KIRO_TG_TOKEN", "123456789:AAExampleTokenValueHere12345")
+        updates = [
+            {
+                "update_id": 21,
+                "message": {
+                    "message_id": 1,
+                    "from": {"id": 111, "is_bot": False},
+                    "chat": {"id": 111, "type": "private"},
+                    "text": "from the phone",
+                },
+            }
+        ]
+
+        def fake_call(_token: str, method: str, _payload: dict[str, Any] | None = None) -> object:
+            if method == "getUpdates":
+                batch = list(updates)
+                updates.clear()
+                if not batch:
+                    time.sleep(0.02)
+                return batch
+            return True
+
+        monkeypatch.setattr("kiro_bot.channels._telegram_call", fake_call)
+        prompts: list[str] = []
+
+        async def submit(_bot: str, prompt: str, actor: str) -> str:
+            assert actor == "channel:telegram:telegram"
+            prompts.append(prompt)
+            return "run-tg"
+
+        async def wait(_run_id: str) -> dict[str, Any]:
+            return {"status": "complete", "events": [{"kind": "text", "text": "got it"}]}
+
+        gateway = ChannelGateway(channels, submit, wait, deliverer=_Deliverer())
+        await gateway.start()
+        try:
+            for _ in range(400):
+                events = channels.list_events(binding_id="telegram")
+                if events and events[0].status == "responded":
+                    break
+                await asyncio.sleep(0.01)
+            else:
+                raise AssertionError("telegram poller did not complete the inbound message")
+        finally:
+            await gateway.close()
+        assert "from the phone" in prompts[0]
+
+    asyncio.run(scenario())
 
 
 class _Deliverer:

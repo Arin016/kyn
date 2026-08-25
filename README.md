@@ -49,8 +49,8 @@ Kiro remains the execution engine. Kiro Bot owns the experience around it.
   artifact manifest, and stop at an explicit human handoff. This layer never
   pushes, opens a pull request, merges, or publishes on its own.
 - Invoke any named bot from authenticated Slack events, GitHub issues and
-  comments, WhatsApp Cloud API messages, normalized email webhooks, or a
-  generic signed webhook.
+  comments, Telegram private chats (laptop long-poll, no public URL), WhatsApp
+  Cloud API messages, normalized email webhooks, or a generic signed webhook.
 - Deduplicate provider retries, preserve bounded source-thread context, filter
   allowed sources/senders, isolate external ACP sessions so unrelated source
   threads cannot inherit one another, recover accepted events after restart,
@@ -74,12 +74,16 @@ uv run kiro-bot ask builder "Inspect this repository and summarize it."
 For the browser control room:
 
 ```bash
+npm --prefix web-ui install
+npm --prefix web-ui run build
 uv run kiro-bot serve
 ```
 
 Then open `http://127.0.0.1:8765/`. The server binds to loopback by default;
 do not expose it to a network until authentication and origin controls are
-enabled.
+enabled. The repository includes a dependency-free fallback control room under
+`web/`; building `web-ui/` adds the full React landing, engineering, and console
+experience under `web/dist/`.
 
 The **Coding** panel starts and monitors verified patch executions. Select the
 builder bot, choose a separate reviewer, describe the task, and provide direct
@@ -89,8 +93,9 @@ still requires a human handoff approval.
 The **Channels** panel connects a selected bot to another place without storing
 secret values. Configure the signing secret or reply token in the daemon's
 environment, enter only the environment-variable names in the UI, and copy the
-generated webhook URL. See [docs/channels.md](docs/channels.md) for provider
-setup and payload contracts.
+generated webhook URL. Telegram is the exception: the laptop polls Telegram, so
+you do not need a public webhook. See [docs/channels.md](docs/channels.md) for
+provider setup and payload contracts.
 
 The **Memory** panel shows completed exchanges that can cross surface
 boundaries. Local ACP conversation history and each provider thread remain

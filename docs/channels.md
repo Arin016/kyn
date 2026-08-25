@@ -19,7 +19,8 @@ permissions, persistence and cancellation still apply.
 - Provider delivery IDs are unique per binding, so webhook retries do not
   create another bot request.
 - Optional allowed-source and allowed-sender lists are exact matches. Use Slack
-  channel/user IDs, a GitHub `owner/repository`, or email addresses.
+  channel/user IDs, a GitHub `owner/repository`, a Telegram numeric user ID, or
+  email addresses. Telegram requires at least one allowed sender.
 - Previous requests and retained bot replies from the same source thread are
   included up to a bounded message and character budget. Raw provider payloads
   are not stored.
@@ -35,8 +36,10 @@ permissions, persistence and cancellation still apply.
   evidence rather than instructions. Raw provider payloads, configured secret
   values, tool payloads and permission decisions are not copied into shared
   memory; user and assistant text is retained as written.
-- Slack, GitHub and WhatsApp replies are delivered only through fixed official
-  provider API hosts. Payloads cannot choose an arbitrary callback URL.
+- Slack, GitHub, WhatsApp and Telegram replies are delivered only through fixed
+  official provider API hosts. Payloads cannot choose an arbitrary callback URL.
+  Telegram inbound uses long polling from the laptop, so it does not need a
+  public webhook.
 
 ## Create a connection
 
@@ -59,6 +62,9 @@ https://your-host/hooks/whatsapp/<connection-id>
 https://your-host/hooks/email/<connection-id>
 https://your-host/hooks/webhook/<connection-id>
 ```
+
+Telegram has no `/hooks/telegram/...` URL. The daemon long-polls Telegram while
+`kiro-bot serve` is running.
 
 The server still binds to loopback by default. Put it behind an authenticated,
 TLS-terminating ingress before accepting internet traffic. Do not expose the
@@ -85,6 +91,35 @@ prevent reply loops.
 
 Set the optional outbound token environment variable to enable replies through
 `chat.postMessage`; replies use the originating channel and thread timestamp.
+
+## Telegram
+
+Telegram is the path that does not need a spare phone number or a public
+webhook. The laptop long-polls `api.telegram.org` while the control room is
+running.
+
+On the phone:
+
+1. Install Telegram.
+2. Open `@BotFather`, send `/newbot`, and copy the bot token.
+3. Open `@userinfobot` and copy your numeric user id.
+4. Open your new bot and tap **Start**. Do not message work yet.
+
+On the laptop:
+
+```bash
+export KIRO_TELEGRAM_BOT_TOKEN='123456789:replace-with-the-botfather-token'
+uv run kiro-bot serve
+```
+
+Create a **Telegram** channel. Enter `KIRO_TELEGRAM_BOT_TOKEN` as the signing
+secret environment variable, leave the reply-token field empty, leave the
+invocation phrase empty for private chats, and put your numeric user id in
+**Allowed senders**. Messages from any other Telegram account are dropped.
+
+Private chats are accepted as-is. Group messages are ignored unless they
+contain the invocation phrase. Replies are posted back to the same Telegram
+chat through the official Bot API only.
 
 ## GitHub
 

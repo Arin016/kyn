@@ -164,6 +164,60 @@ def test_websocket_resume_and_terminal_marker(tmp_path: Path) -> None:
             assert terminal["run"]["status"] == "complete"
 
 
+def test_live_socket_publishes_inbound_channel_events(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    secret = "live-secret"
+    monkeypatch.setenv("KIRO_LIVE_SIGNING_SECRET", secret)
+    app = create_app(Store(tmp_path / "store"), FakeEngine())
+    with _test_client(app) as client:
+        assert client.post(
+            "/api/bots", json={"name": "builder", "cwd": str(tmp_path)}
+        ).status_code == 201
+        created = client.post(
+            "/api/channels",
+            json={
+                "id": "phone",
+                "name": "Phone",
+                "kind": "webhook",
+                "bot_name": "builder",
+                "signing_secret_env": "KIRO_LIVE_SIGNING_SECRET",
+                "trigger_prefix": "",
+            },
+        )
+        assert created.status_code == 201
+        stamp = str(int(time.time()))
+        raw = json.dumps(
+            {
+                "delivery_id": "live-1",
+                "thread_id": "phone-thread",
+                "sender": "arin",
+                "text": "from the phone",
+            },
+            separators=(",", ":"),
+        ).encode()
+        signature = "sha256=" + hmac.new(
+            secret.encode(), stamp.encode() + b"." + raw, hashlib.sha256
+        ).hexdigest()
+        with client.websocket_connect("/ws/live") as websocket:
+            assert websocket.receive_json()["type"] == "hello"
+            posted = client.post(
+                "/hooks/webhook/phone",
+                content=raw,
+                headers={
+                    "content-type": "application/json",
+                    "x-kiro-timestamp": stamp,
+                    "x-kiro-signature-256": signature,
+                },
+            )
+            assert posted.status_code == 200
+            payload = websocket.receive_json()
+            assert payload["type"] == "channel_event"
+            assert payload["bot_name"] == "builder"
+            assert payload["event"]["text"] == "from the phone"
+            assert payload["channel"]["id"] == "phone"
+
+
 def test_validation_not_found_and_history(tmp_path: Path) -> None:
     engine = FakeEngine()
     store = Store(tmp_path / "store")

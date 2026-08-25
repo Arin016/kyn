@@ -43,6 +43,7 @@ from .coding_lifecycle import (
     CodingLifecycleController,
     CodingLifecycleError,
 )
+from .live import LiveBus
 from .channels import (
     ChannelAuthenticationError,
     ChannelAuthorizationError,
@@ -238,6 +239,7 @@ def create_app(
     coding_controller: CodingLifecycleController | None = None,
     channels: ChannelStore | None = None,
     channel_gateway: ChannelGateway | None = None,
+    live: LiveBus | None = None,
 ) -> Any:
     """Create the local daemon application.
 
@@ -273,6 +275,7 @@ def create_app(
         active_coding_store, active_engine, active_workspaces
     )
     active_channels = channels or ChannelStore(active_store)
+    active_live = live or LiveBus()
 
     async def engine_submit(bot_name: str, message: str, actor: str) -> object:
         submit = active_engine.submit
@@ -331,7 +334,7 @@ def create_app(
             await asyncio.sleep(0.05)
 
     active_channel_gateway = channel_gateway or ChannelGateway(
-        active_channels, engine_submit, delegated_wait, memory=active_memory
+        active_channels, engine_submit, delegated_wait, memory=active_memory, live=active_live
     )
 
     active_scheduler = scheduler or Scheduler(active_routines, scheduled_submit)
@@ -381,6 +384,7 @@ def create_app(
         app.state.coding_controller = active_coding_controller
         app.state.channels = active_channels
         app.state.channel_gateway = active_channel_gateway
+        app.state.live = active_live
         engine_start_attempted = False
         coding_start_attempted = False
         channel_start_attempted = False
@@ -437,6 +441,7 @@ def create_app(
     app.state.coding_controller = active_coding_controller
     app.state.channels = active_channels
     app.state.channel_gateway = active_channel_gateway
+    app.state.live = active_live
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(_request: Request, exc: RequestValidationError) -> JSONResponse:
@@ -1066,6 +1071,24 @@ def create_app(
             )
             await websocket.close(code=1011)
 
+    @app.websocket("/ws/live")
+    async def stream_live(websocket: WebSocket) -> None:
+        await websocket.accept()
+        queue = active_live.subscribe()
+        try:
+            await websocket.send_json({"type": "hello"})
+            while True:
+                try:
+                    payload = await asyncio.wait_for(queue.get(), timeout=20)
+                except TimeoutError:
+                    await websocket.send_json({"type": "ping"})
+                    continue
+                await websocket.send_json(_json_safe(payload))
+        except Exception:
+            return
+        finally:
+            active_live.unsubscribe(queue)
+
     @app.get("/", include_in_schema=False)
     async def root() -> RedirectResponse:
         return RedirectResponse(url="/app/", status_code=307)
@@ -1073,8 +1096,10 @@ def create_app(
     packaged_web_dir = Path(__file__).resolve().parent / "web"
     development_web_dir = Path(__file__).resolve().parents[2] / "web"
     web_dir = packaged_web_dir if packaged_web_dir.is_dir() else development_web_dir
-    if web_dir.is_dir():
-        app.mount("/app", StaticFiles(directory=web_dir, html=True), name="app")
+    built_web_dir = web_dir / "dist" if web_dir.is_dir() else None
+    static_dir = built_web_dir if built_web_dir and built_web_dir.is_dir() else web_dir
+    if static_dir.is_dir():
+        app.mount("/app", StaticFiles(directory=static_dir, html=True), name="app")
 
     return app
 

@@ -89,12 +89,14 @@ must be serialized per session, but independent sessions may run concurrently.
   turns, direct-argv deterministic checks, bounded repair loops, independent
   reviewer bots, reviewer-mutation detection, retained artifact manifests and
   an explicit human handoff boundary.
-- Authenticated external channel bindings for Slack, GitHub, WhatsApp Cloud
-  API, normalized email and generic webhooks. The gateway verifies raw-body
-  signatures, rejects stale signed requests, deduplicates provider delivery
-  IDs, builds bounded source-thread context, runs each event in a fresh
-  external ACP session, submits through the governed Engine and retains the
-  response even when outbound delivery is not configured.
+- Authenticated external channel bindings for Slack, GitHub, Telegram, WhatsApp
+  Cloud API, normalized email and generic webhooks. Telegram inbound is
+  laptop-side long polling against `api.telegram.org` only. Other providers
+  verify raw-body signatures, reject stale signed requests, and use public
+  webhooks. The gateway deduplicates provider delivery IDs, builds bounded
+  source-thread context, runs each event in a fresh external ACP session,
+  submits through the governed Engine and retains the response even when
+  outbound delivery is not configured.
 
 ## Next product layers
 

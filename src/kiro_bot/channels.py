@@ -23,14 +23,17 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Mapping, Protocol, Sequence
 
+from .live import LiveBus
 from .memory import SharedMemoryStore
 from .store import Store
 
 
-KINDS = frozenset({"slack", "github", "whatsapp", "email", "webhook"})
+KINDS = frozenset({"slack", "github", "whatsapp", "telegram", "email", "webhook"})
 TERMINAL = frozenset({"responded", "stored", "ignored", "failed", "cancelled"})
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
 _ENV = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_TELEGRAM_TOKEN = re.compile(r"^[0-9]{5,}:[A-Za-z0-9_-]{20,}$")
+_TELEGRAM_HOST = "api.telegram.org"
 
 
 class ChannelError(RuntimeError):
@@ -69,7 +72,9 @@ class ChannelBinding:
         payload = asdict(self)
         payload["signing_secret_configured"] = bool(self.signing_secret_env)
         payload["verification_token_configured"] = bool(self.verify_token_env)
-        payload["outbound_delivery_configured"] = bool(self.outbound_token_env)
+        payload["outbound_delivery_configured"] = bool(
+            self.outbound_token_env or self.kind == "telegram"
+        )
         payload.pop("signing_secret_env", None)
         payload.pop("verify_token_env", None)
         payload.pop("outbound_token_env", None)
@@ -149,6 +154,8 @@ class ChannelStore:
         prefix = str(trigger_prefix).strip()
         sources = _clean_tuple(allowed_sources, 200)
         senders = _clean_tuple(allowed_senders, 200)
+        if kind == "telegram" and not senders:
+            raise ValueError("Telegram channels require at least one allowed sender id")
         now = _now()
         with self.store.connect() as db:
             try:
@@ -417,13 +424,14 @@ class ProviderReplyDeliverer:
     """Deliver only to fixed provider APIs; never to payload-controlled URLs."""
 
     async def deliver(self, binding: ChannelBinding, event: ChannelEvent, response_text: str) -> str:
-        if not binding.outbound_token_env:
+        if binding.kind != "telegram" and not binding.outbound_token_env:
             return "stored"
-        token = os.environ.get(binding.outbound_token_env, "")
-        if not token:
-            raise ChannelError(
-                f"outbound token environment variable {binding.outbound_token_env!r} is missing"
-            )
+        if binding.kind != "telegram":
+            token = os.environ.get(binding.outbound_token_env, "")
+            if not token:
+                raise ChannelError(
+                    f"outbound token environment variable {binding.outbound_token_env!r} is missing"
+                )
         if binding.kind == "slack":
             payload = {
                 "channel": event.context.get("channel", event.source),
@@ -479,6 +487,18 @@ class ProviderReplyDeliverer:
                     "whatsapp",
                 )
             return "delivered"
+        if binding.kind == "telegram":
+            token = _telegram_binding_token(binding)
+            chat_id = event.context.get("chat_id", event.source)
+            if chat_id in (None, ""):
+                raise ChannelError("Telegram reply target is incomplete")
+            for chunk in _text_chunks(response_text, 4000):
+                payload: dict[str, Any] = {"chat_id": chat_id, "text": chunk}
+                message_id = event.context.get("message_id")
+                if isinstance(message_id, int):
+                    payload["reply_to_message_id"] = message_id
+                await asyncio.to_thread(_telegram_call, token, "sendMessage", payload)
+            return "delivered"
         return "stored"
 
 
@@ -491,6 +511,7 @@ class ChannelGateway:
         *,
         deliverer: ReplyDeliverer | None = None,
         memory: SharedMemoryStore | None = None,
+        live: LiveBus | None = None,
         context_messages: int = 12,
         context_chars: int = 24_000,
         memory_chars: int = 6_000,
@@ -500,11 +521,13 @@ class ChannelGateway:
         self.wait = wait
         self.deliverer = deliverer or ProviderReplyDeliverer()
         self.memory = memory
+        self.live = live
         self.context_messages = min(max(int(context_messages), 0), 50)
         self.context_chars = min(max(int(context_chars), 1000), 100_000)
         self.memory_chars = min(max(int(memory_chars), 500), 30_000)
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._started = False
+        self._telegram = TelegramPoller(self.channels, self.ingest)
 
     async def start(self) -> None:
         if self._started:
@@ -512,9 +535,11 @@ class ChannelGateway:
         self._started = True
         for event in await asyncio.to_thread(self.channels.pending):
             self._launch(event.id)
+        await self._telegram.start()
 
     async def close(self) -> None:
         self._started = False
+        await self._telegram.close()
         tasks = list(self._tasks.values())
         for task in tasks:
             task.cancel()
@@ -523,9 +548,25 @@ class ChannelGateway:
 
     async def ingest(self, binding: ChannelBinding, incoming: IncomingEvent) -> tuple[ChannelEvent, bool]:
         event, created = await asyncio.to_thread(self.channels.accept, binding, incoming)
+        self._publish(binding, event)
         if created:
             self._launch(event.id)
         return event, created
+
+    def _publish(self, binding: ChannelBinding, event: ChannelEvent) -> None:
+        if self.live is None:
+            return
+        try:
+            self.live.publish(
+                {
+                    "type": "channel_event",
+                    "bot_name": binding.bot_name,
+                    "channel": {"id": binding.id, "kind": binding.kind, "name": binding.name},
+                    "event": event.snapshot(),
+                }
+            )
+        except Exception:
+            return
 
     def _launch(self, event_id: str) -> None:
         current = self._tasks.get(event_id)
@@ -571,6 +612,7 @@ class ChannelGateway:
                 if not run_id:
                     raise ChannelError("engine returned no run identifier")
                 event = await asyncio.to_thread(self.channels.attach_run, event.id, run_id)
+                self._publish(binding, event)
             terminal = await self.wait(run_id)
             run_status = str(terminal.get("status", ""))
             if run_status != "complete":
@@ -580,18 +622,21 @@ class ChannelGateway:
                 response = "The bot completed this request, but produced no text response."
             await self._record_memory(binding, event, response)
             delivery = await self.deliverer.deliver(binding, event, response)
-            await asyncio.to_thread(
+            event = await asyncio.to_thread(
                 self.channels.complete,
                 event.id,
                 response_text=response,
                 delivery_status=delivery,
                 status="responded" if delivery == "delivered" else "stored",
             )
+            self._publish(binding, event)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
             try:
-                await asyncio.to_thread(self.channels.fail, event_id, _safe_error(exc))
+                failed = await asyncio.to_thread(self.channels.fail, event_id, _safe_error(exc))
+                binding = await asyncio.to_thread(self.channels.require_binding, failed.binding_id)
+                self._publish(binding, failed)
             except Exception:
                 pass
 
@@ -811,6 +856,133 @@ def whatsapp_events(payload: Mapping[str, Any]) -> list[IncomingEvent]:
     return normalized
 
 
+def telegram_event(update: Mapping[str, Any], binding: ChannelBinding) -> IncomingEvent | None:
+    update_id = update.get("update_id")
+    if not isinstance(update_id, int):
+        return None
+    message = update.get("message")
+    if not isinstance(message, Mapping):
+        return None
+    sender_obj = message.get("from") if isinstance(message.get("from"), Mapping) else {}
+    if sender_obj.get("is_bot"):
+        return None
+    chat = message.get("chat") if isinstance(message.get("chat"), Mapping) else {}
+    chat_id = chat.get("id")
+    sender_id = sender_obj.get("id")
+    if chat_id in (None, "") or sender_id in (None, ""):
+        return None
+    text = str(message.get("text") or message.get("caption") or "").strip()
+    if not text:
+        return None
+    chat_type = str(chat.get("type", ""))
+    if chat_type != "private":
+        prefix = binding.trigger_prefix.strip()
+        if not prefix or prefix.lower() not in text.lower():
+            return None
+    return IncomingEvent(
+        delivery_id=str(update_id),
+        thread_key=str(chat_id),
+        sender=str(sender_id),
+        source=str(chat_id),
+        text=text,
+        context={
+            "chat_id": chat_id,
+            "message_id": message.get("message_id"),
+            "username": str(sender_obj.get("username") or ""),
+            "chat_type": chat_type,
+        },
+    )
+
+
+class TelegramPoller:
+    """Long-poll Telegram so a laptop daemon needs no public webhook."""
+
+    def __init__(self, channels: ChannelStore, ingest: Callable[..., Awaitable[Any]]) -> None:
+        self.channels = channels
+        self.ingest = ingest
+        self._task: asyncio.Task[None] | None = None
+        self._started = False
+        self._offsets: dict[str, int] = {}
+        self._webhook_cleared: set[str] = set()
+
+    async def start(self) -> None:
+        if self._started:
+            return
+        self._started = True
+        self._task = asyncio.create_task(self._run(), name="kiro-telegram-poller")
+
+    async def close(self) -> None:
+        self._started = False
+        task = self._task
+        self._task = None
+        if task is None:
+            return
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+    async def _run(self) -> None:
+        while self._started:
+            try:
+                bindings = await asyncio.to_thread(self.channels.list_bindings)
+                telegram = [item for item in bindings if item.kind == "telegram" and item.enabled]
+                if not telegram:
+                    await asyncio.sleep(2)
+                    continue
+                await asyncio.gather(*(self._poll_binding(item) for item in telegram))
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                await asyncio.sleep(3)
+
+    async def _poll_binding(self, binding: ChannelBinding) -> None:
+        try:
+            token = _telegram_binding_token(binding)
+        except ChannelError:
+            await asyncio.sleep(5)
+            return
+        if binding.id not in self._webhook_cleared:
+            try:
+                await asyncio.to_thread(
+                    _telegram_call, token, "deleteWebhook", {"drop_pending_updates": False}
+                )
+                self._webhook_cleared.add(binding.id)
+            except ChannelError:
+                await asyncio.sleep(3)
+                return
+        offset = self._offsets.get(binding.id, 0)
+        try:
+            result = await asyncio.to_thread(
+                _telegram_call,
+                token,
+                "getUpdates",
+                {
+                    "offset": offset,
+                    "timeout": 25,
+                    "allowed_updates": ["message"],
+                },
+            )
+        except ChannelError:
+            await asyncio.sleep(3)
+            return
+        if not isinstance(result, list):
+            return
+        highest = offset
+        for update in result:
+            if not isinstance(update, Mapping):
+                continue
+            update_id = update.get("update_id")
+            if isinstance(update_id, int):
+                highest = max(highest, update_id + 1)
+            incoming = telegram_event(update, binding)
+            if incoming is None:
+                continue
+            try:
+                await self.ingest(binding, incoming)
+            except (ChannelAuthorizationError, ChannelError):
+                continue
+        self._offsets[binding.id] = highest
+
+
 def generic_event(payload: Mapping[str, Any]) -> IncomingEvent:
     required = {key: str(payload.get(key, "")).strip() for key in ("delivery_id", "thread_id", "sender", "text")}
     if not all(required.values()):
@@ -908,6 +1080,48 @@ def _post_json(url: str, payload: Mapping[str, Any], headers: Mapping[str, str],
             raise ChannelError("Slack returned an invalid reply") from exc
         if not isinstance(decoded, Mapping) or not decoded.get("ok"):
             raise ChannelError("Slack rejected the reply")
+
+
+def _telegram_binding_token(binding: ChannelBinding) -> str:
+    env_name = binding.outbound_token_env or binding.signing_secret_env
+    token = os.environ.get(env_name, "")
+    if not token:
+        raise ChannelError(f"Telegram bot token environment variable {env_name!r} is missing")
+    return _telegram_bot_token(token)
+
+
+def _telegram_bot_token(token: str) -> str:
+    token = str(token).strip()
+    if not _TELEGRAM_TOKEN.fullmatch(token):
+        raise ChannelError("Telegram bot token is invalid")
+    return token
+
+
+def _telegram_call(token: str, method: str, payload: Mapping[str, Any] | None = None) -> Any:
+    if not re.fullmatch(r"[A-Za-z]+", method):
+        raise ChannelError("Telegram method is invalid")
+    encoded = urllib.parse.quote(_telegram_bot_token(token), safe="")
+    url = f"https://{_TELEGRAM_HOST}/bot{encoded}/{method}"
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme != "https" or (parsed.hostname or "").casefold() != _TELEGRAM_HOST:
+        raise ChannelError("Telegram API host is not allowed")
+    body = None if payload is None else json.dumps(dict(payload)).encode()
+    headers = {"User-Agent": "kiro-bot/0.1", "Accept": "application/json"}
+    request = urllib.request.Request(url, data=body, method="POST", headers=headers)
+    if body is not None:
+        request.add_header("Content-Type", "application/json")
+    try:
+        with urllib.request.urlopen(request, timeout=40) as response:  # noqa: S310 - fixed Telegram host
+            data = response.read(1_000_000)
+    except (urllib.error.URLError, TimeoutError) as exc:
+        raise ChannelError("Telegram API request failed") from exc
+    try:
+        decoded = json.loads(data)
+    except Exception as exc:
+        raise ChannelError("Telegram returned an invalid reply") from exc
+    if not isinstance(decoded, Mapping) or not decoded.get("ok"):
+        raise ChannelError("Telegram rejected the request")
+    return decoded.get("result")
 
 
 def _binding(row: Any) -> ChannelBinding:
