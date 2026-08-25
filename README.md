@@ -1,10 +1,21 @@
 # Kiro Bot
 
-Kiro Bot is an independent control plane for local AWS Kiro. It launches
-`kiro-cli acp`, communicates with it using newline-delimited JSON-RPC, and adds
-named bots, durable conversations, event history, approvals, and orchestration.
+**Put Kiro to work beyond the terminal.**
 
-Kiro remains the execution engine. Kiro Bot owns the experience around it.
+Kiro Bot is the local control plane for persistent Kiro agents, recurring work,
+and governed coding handoffs. Create named agents with clear jobs, reach them
+from your browser or phone, run several at once, and keep consequential actions
+behind deterministic boundaries.
+
+![Kiro Bot control room](docs/screenshots/kiro-bot-home-desktop.png)
+
+Kiro remains the agentic engine that reasons, writes code, and uses tools. Kiro
+Bot launches `kiro-cli acp` and owns the durable product layer around it:
+identity, conversations, memory, queues, channels, schedules, approvals,
+workspaces, and orchestration.
+
+See [docs/positioning.md](docs/positioning.md) for the product promise, proof
+points, voice, and honest boundaries.
 
 ## What works now
 

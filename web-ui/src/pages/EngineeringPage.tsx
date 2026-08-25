@@ -257,7 +257,7 @@ export default function EngineeringPage({ onEnterConsole, onBackToLanding }: Pro
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
           >
-            Engineering
+            Under the surface
           </motion.p>
           <motion.h1
             className="ed-hero-h1 ed-hero-h1-eng"
@@ -265,7 +265,7 @@ export default function EngineeringPage({ onEnterConsole, onBackToLanding }: Pro
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
           >
-            How Kiro Bot actually works.
+            Kiro does the work. This system makes it durable.
           </motion.h1>
           <motion.p
             className="ed-lead"
@@ -273,9 +273,9 @@ export default function EngineeringPage({ onEnterConsole, onBackToLanding }: Pro
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.16 }}
           >
-            Roughly six thousand lines of Python around Kiro's Agent Client Protocol. One shared
-            subprocess, many logical sessions, durable leases everywhere, and a lifecycle that
-            treats the human as the final compiler pass.
+            Kiro Bot does not replace the Kiro agent harness. It gives Kiro a durable identity,
+            routes real work to it, preserves the state around each job, and enforces the boundaries
+            the model cannot be trusted to remember on its own.
           </motion.p>
         </section>
 
@@ -283,13 +283,14 @@ export default function EngineeringPage({ onEnterConsole, onBackToLanding }: Pro
         <section id="protocol" className="ed-section" style={{ paddingTop: 0 }}>
           <div className="ed-container">
             <Reveal>
-              <p className="ed-eyebrow">The wire</p>
-              <h2 className="ed-h2">One subprocess. Many sessions. JSON-RPC over pipes.</h2>
+              <p className="ed-eyebrow">Built on Kiro</p>
+              <h2 className="ed-h2">One Kiro runtime. A durable identity for every job.</h2>
               <p className="ed-body ed-body-lead">
-                Kiro Bot never emulates Kiro or drives its terminal. It launches{" "}
+                The product starts with the official programmatic surface. Kiro Bot launches{" "}
                 <code className="ed-inline-code">kiro-cli acp</code> and speaks newline-delimited
-                JSON-RPC 2.0 over stdin and stdout. One stdout reader demultiplexes frames by
-                session ID; JSON-RPC responses are correlated by request ID.
+                JSON-RPC 2.0 over stdin and stdout. Kiro keeps ownership of reasoning, models, and
+                tools; Kiro Bot owns the agents, queues, channels, policies, and durable outcomes
+                around those sessions.
               </p>
             </Reveal>
 
@@ -322,19 +323,19 @@ export default function EngineeringPage({ onEnterConsole, onBackToLanding }: Pro
             <Reveal delay={0.18}>
               <div className="ed-install-notes">
                 <div>
-                  <p className="ed-eyebrow">Invariants we keep</p>
+                  <p className="ed-eyebrow">What the control plane guarantees</p>
                   <p className="ed-body">
-                    Never auto-approve without a session. Always answer permission requests — a
-                    silent drop wedges the backend. One active prompt per logical session. Persist
-                    the Kiro session ID before considering a conversation durable.
+                    Every accepted turn gets a durable record. Work for one agent stays ordered;
+                    different agents can move concurrently. Permission requests always receive an
+                    explicit answer, and a session is persisted before it is treated as recoverable.
                   </p>
                 </div>
                 <div>
-                  <p className="ed-eyebrow">What Kiro owns</p>
+                  <p className="ed-eyebrow">What stays with Kiro</p>
                   <p className="ed-body">
-                    Model calls, tool execution, the actual work. What Kiro Bot owns: identity,
-                    session-to-bot mapping, queues, audit, quotas, channels, delegation, workspace
-                    isolation, and the boundary conditions around all of it.
+                    Model calls, context assembly, planning, tool execution, and the actual agentic
+                    work. That separation means Kiro Bot can improve the product experience without
+                    pretending to be a second agent harness.
                   </p>
                 </div>
               </div>
@@ -346,11 +347,12 @@ export default function EngineeringPage({ onEnterConsole, onBackToLanding }: Pro
         <section id="lifecycle" ref={lifecycleRef} className="ed-section" style={{ paddingTop: 0 }}>
           <div className="ed-container">
             <Reveal>
-              <p className="ed-eyebrow">The coding lifecycle</p>
-              <h2 className="ed-h2">Every code change moves through five hands before yours.</h2>
+              <p className="ed-eyebrow">Verified coding</p>
+              <h2 className="ed-h2">A code change should come back with evidence.</h2>
               <p className="ed-body ed-body-lead">
-                The path is fixed, the counter is bounded, and the last hand is always yours. This
-                is the load-bearing part of the control plane.
+                Implementation is only one stage. The workflow fixes the path through isolation,
+                your deterministic checks, bounded repair, independent review, and a final human
+                handoff. The model can reason; it cannot quietly redefine done.
               </p>
             </Reveal>
 
@@ -401,13 +403,13 @@ export default function EngineeringPage({ onEnterConsole, onBackToLanding }: Pro
         <section id="map" className="ed-band">
           <div className="ed-container">
             <Reveal>
-              <p className="ed-eyebrow">The map</p>
-              <h2 className="ed-h2">Ten subsystems. One controller per data directory.</h2>
+              <p className="ed-eyebrow">Product architecture</p>
+              <h2 className="ed-h2">The features are durable because the state is.</h2>
               <p className="ed-body ed-body-lead">
-                Each area is one Python module under{" "}
+                Every product promise maps to a small subsystem under{" "}
                 <code className="ed-inline-code">src/kiro_bot/</code>. Everything durable lives in a
-                single SQLite database under{" "}
-                <code className="ed-inline-code">~/.kiro-bot/</code>.
+                local SQLite database under <code className="ed-inline-code">~/.kiro-bot/</code>,
+                while secrets remain environment references resolved only when a session starts.
               </p>
             </Reveal>
 
@@ -431,11 +433,12 @@ export default function EngineeringPage({ onEnterConsole, onBackToLanding }: Pro
         <section id="roadmap" className="ed-section">
           <div className="ed-container">
             <Reveal>
-              <p className="ed-eyebrow">Not yet shipped</p>
-              <h2 className="ed-h2">What we haven't built.</h2>
+              <p className="ed-eyebrow">Productization roadmap</p>
+              <h2 className="ed-h2">What must be true before this serves a team.</h2>
               <p className="ed-body ed-body-lead">
-                Told to you plainly, because if you're evaluating this against a vendor with real
-                auth, you should know exactly where we're not yet.
+                The local prototype is intentionally honest about its boundary. A hosted or
+                organization-wide product still needs identity, tenancy, budgets, publishing, and
+                richer native integrations—not merely another landing-page promise.
               </p>
             </Reveal>
 

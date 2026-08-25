@@ -12,56 +12,106 @@ type Persona = {
 const PERSONAS: Persona[] = [
   {
     role: "The Builder",
-    outcome: "Ships a fix. Waits for you to merge.",
+    outcome: "Takes an issue to a reviewed handoff.",
     body:
-      "Point it at a task and a repo. It writes into a detached Git worktree, runs the checks you gave, and retries on failure until the bounded repair limit. Your checkout never moves. Nothing pushes.",
-    detail: "Detached worktree · bounded repair · artifact manifest",
+      "Give it the outcome and the repo. It works in an isolated checkout, runs your real checks, repairs what fails, and brings back a change another agent has reviewed. Your working tree never moves.",
+    detail: "Build → verify → repair → independent review",
   },
   {
     role: "The Reviewer",
-    outcome: "Reads every diff before you do.",
+    outcome: "Gives every change a clean second look.",
     body:
-      "A different Kiro with its own policy. It reads the artifact manifest, not the writer's plan. If it edits anything, the SHA-256 changes and the mutation is flagged. Approval stays a keystroke only you can send.",
-    detail: "Independent bot · mutation detection · human handoff",
+      "A separate Kiro inspects the result with fresh context and its own policy. If the reviewer changes the work, Kiro Bot catches it. The final handoff still belongs to you.",
+    detail: "Separate context · mutation detection · human decision",
   },
   {
-    role: "The Foreman",
-    outcome: "Named in your channels. Answers on the same thread.",
+    role: "The Triage Agent",
+    outcome: "Meets new work where it arrives.",
     body:
-      "Bind it to Slack, GitHub, WhatsApp, email, or Telegram. Signatures are verified against the raw body. Delivery IDs deduplicate. Telegram is polled from your laptop, so no public URL is needed.",
-    detail: "Six signed sources · thread isolation · no public URL for Telegram",
+      "Mention it in Slack, open a GitHub issue, send a WhatsApp message, or text it on Telegram. It keeps each source thread separate and replies where the conversation started.",
+    detail: "Browser · Slack · GitHub · WhatsApp · email · Telegram",
   },
   {
-    role: "The Watcher",
-    outcome: "Runs on the schedule you keep.",
+    role: "The Operator",
+    outcome: "Owns the checks that should not depend on memory.",
     body:
-      "Give it a prompt and a cadence — every hour, every Monday, or a specific timestamp. It survives crashes with lease-based recovery and never runs the same routine twice. It's the teammate that reads the dashboards while you sleep.",
-    detail: "Interval or one-shot · lease-based recovery · no double-fire",
+      "Give one agent the recurring job: watch a queue, prepare a digest, or inspect a repo on a cadence. Kiro Bot remembers what is due and recovers accepted work after a restart.",
+    detail: "One-time or repeating · durable schedule · visible history",
   },
   {
-    role: "The Planner",
-    outcome: "Sends the whole team as a plan.",
+    role: "The Coordinator",
+    outcome: "Moves one outcome through several specialists.",
     body:
-      "Draft a graph of named bots with real dependencies. Independent branches run in parallel. Failures propagate up. Cancellation cascades down. The plan itself is the durable artifact — reload the page, the plan is still there.",
-    detail: "DAG execution · bounded fan-out · cascade cancel",
+      "Break a larger goal into named responsibilities. Independent agents move in parallel, dependent work waits for the right result, and one cancellation stops the plan cleanly.",
+    detail: "Parallel work · explicit dependencies · one visible plan",
   },
 ];
 
-const WHATS_NEW = [
+const PRODUCT_PROMISES = [
   {
-    label: "New",
-    title: "Verified coding lifecycle",
-    body: "Builder → your checks → repair → reviewer → your keystroke. Mutation detection built in.",
+    label: "Persistent",
+    title: "The work keeps its context",
+    body: "Each named agent carries its Kiro session, history, and relevant memory into the next conversation.",
   },
   {
-    label: "Ships now",
-    title: "Six signed channels",
-    body: "Slack, GitHub, WhatsApp, email, generic webhook, and Telegram — polled, no public URL.",
+    label: "Reachable",
+    title: "Talk from where the work happens",
+    body: "Use the browser, Slack, GitHub, WhatsApp, email, a signed webhook, or Telegram.",
   },
   {
-    label: "Ships now",
-    title: "Multi-bot delegation",
-    body: "Named bots as a DAG. Bounded fan-out, cascade cancel, durable across restarts.",
+    label: "Governed",
+    title: "Autonomy with a hard edge",
+    body: "Policies, quotas, approvals, isolated workspaces, and an audit trail stay outside the model.",
+  },
+];
+
+const PRODUCT_PILLARS = [
+  {
+    eyebrow: "Keep the thread",
+    title: "One prompt ends. The job does not have to.",
+    body:
+      "Kiro Bot gives every agent a durable identity and conversation. Come back tomorrow, switch from browser to phone, or resume after a restart without rebuilding the working context from zero.",
+  },
+  {
+    eyebrow: "Run a roster",
+    title: "Use one agent per responsibility.",
+    body:
+      "Keep implementation, review, triage, and operations in separate hands. Each agent gets its own queue, policy, memory, and Kiro session—and several can work at once.",
+  },
+  {
+    eyebrow: "Bring the work to you",
+    title: "Message the same agent from your desk or phone.",
+    body:
+      "A GitHub issue, Slack thread, WhatsApp message, email event, or Telegram chat can reach the agent that owns the job. Replies return to the originating thread.",
+  },
+  {
+    eyebrow: "Trust the harness",
+    title: "The model proposes. The control plane decides.",
+    body:
+      "Tool policy, quotas, approval routing, workspace isolation, deterministic checks, and final handoffs are enforced by code—not left to a prompt to remember.",
+  },
+];
+
+const FAQS = [
+  {
+    question: "Is Kiro Bot another coding model?",
+    answer:
+      "No. Kiro remains the agentic engine that reasons, writes code, and uses tools. Kiro Bot is the independent local control plane that adds durable agents, channels, schedules, coordination, governance, and verified work around Kiro's ACP interface.",
+  },
+  {
+    question: "Does it keep working when my laptop is closed?",
+    answer:
+      "Not in the current local-first build. The daemon and Kiro CLI run on a machine you control, so that machine must remain online for background routines and remote channels. A remote deployment is possible, but authentication and network hardening are your responsibility today.",
+  },
+  {
+    question: "Can Kiro Bot merge or publish code for me?",
+    answer:
+      "Not today. The verified coding lifecycle stops at a human-approved handoff after isolated implementation, deterministic checks, bounded repair, and independent review. It does not push, open a pull request, merge, or publish on its own.",
+  },
+  {
+    question: "Where does my data live?",
+    answer:
+      "Bot state is stored locally in SQLite under ~/.kiro-bot by default. Secrets remain environment-variable references, and the audit ledger records decisions without storing raw tool payloads.",
   },
 ];
 
@@ -139,11 +189,11 @@ export default function LandingPage({ onEnterConsole, onOpenEngineering }: Props
             Kiro Bot
           </button>
           <nav className="ed-nav-links" aria-label="Primary">
-            <button type="button" onClick={() => scrollTo("roster")}>Roster</button>
-            <button type="button" onClick={onOpenEngineering}>How it works</button>
+            <button type="button" onClick={() => scrollTo("why")}>Why Kiro Bot</button>
+            <button type="button" onClick={() => scrollTo("roster")}>Jobs</button>
             <button type="button" onClick={onOpenEngineering}>Engineering</button>
             <button type="button" className="ed-btn ed-btn-primary" onClick={onEnterConsole}>
-              Open the console
+              Start with a bot
             </button>
           </nav>
         </div>
@@ -159,7 +209,7 @@ export default function LandingPage({ onEnterConsole, onOpenEngineering }: Props
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
             >
-              A team of Kiros
+              Persistent agents for Kiro
             </motion.p>
             <motion.h1
               className="ed-hero-h1"
@@ -167,9 +217,9 @@ export default function LandingPage({ onEnterConsole, onOpenEngineering }: Props
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.7, delay: 0.06, ease: [0.22, 1, 0.36, 1] }}
             >
-              Kiros for every job you'd
+              Put Kiro to work
               <br />
-              <span className="ed-accent-word">hand a teammate.</span>
+              <span className="ed-accent-word">beyond the terminal.</span>
             </motion.h1>
             <motion.p
               className="ed-lead"
@@ -177,8 +227,9 @@ export default function LandingPage({ onEnterConsole, onOpenEngineering }: Props
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.14 }}
             >
-              Named Kiros, each with its own memory, workspace, and boundaries. Delegate the way
-              you'd delegate to a person. Nothing merges without your keystroke.
+              Create named agents with clear jobs, durable context, and hard boundaries. Reach
+              them from your browser or phone, run several at once, and stay in control of the
+              decisions that matter.
             </motion.p>
             <motion.div
               className="ed-cta-row"
@@ -187,10 +238,10 @@ export default function LandingPage({ onEnterConsole, onOpenEngineering }: Props
               transition={{ duration: 0.6, delay: 0.22 }}
             >
               <button type="button" className="ed-btn ed-btn-primary" onClick={onEnterConsole}>
-                Open the console
+                Meet your first bot
               </button>
               <button type="button" className="ed-btn ed-btn-secondary" onClick={() => scrollTo("roster")}>
-                Meet the roster ↓
+                See what it can do ↓
               </button>
             </motion.div>
           </div>
@@ -200,11 +251,11 @@ export default function LandingPage({ onEnterConsole, onOpenEngineering }: Props
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.3 }}
-            aria-label="What ships now"
+            aria-label="Built for real work"
           >
-            <p className="ed-eyebrow">What ships now</p>
+            <p className="ed-eyebrow">Built for real work</p>
             <ul>
-              {WHATS_NEW.map((item) => (
+              {PRODUCT_PROMISES.map((item) => (
                 <li key={item.title}>
                   <span className="ed-side-label">{item.label}</span>
                   <p className="ed-side-title">{item.title}</p>
@@ -215,16 +266,41 @@ export default function LandingPage({ onEnterConsole, onOpenEngineering }: Props
           </motion.aside>
         </section>
 
+        {/* WHY */}
+        <section id="why" className="ed-section" style={{ paddingTop: 0 }}>
+          <div className="ed-container">
+            <Reveal>
+              <p className="ed-eyebrow">Why Kiro Bot</p>
+              <h2 className="ed-h2">The agent is only half the product.</h2>
+              <p className="ed-body ed-body-lead">
+                Real work lasts longer than a prompt. It crosses repos, channels, reviews, and
+                days. Kiro Bot supplies the durable system around Kiro so you are not the queue,
+                scheduler, memory, and approval router yourself.
+              </p>
+            </Reveal>
+            <div className="ed-scenes">
+              {PRODUCT_PILLARS.map((pillar, index) => (
+                <Reveal key={pillar.title} delay={index * 0.05}>
+                  <article className="ed-scene">
+                    <span className="ed-scene-eyebrow">{pillar.eyebrow}</span>
+                    <h3 className="ed-scene-title">{pillar.title}</h3>
+                    <p className="ed-scene-body">{pillar.body}</p>
+                  </article>
+                </Reveal>
+              ))}
+            </div>
+          </div>
+        </section>
+
         {/* ROSTER */}
         <section id="roster" className="ed-section" style={{ paddingTop: 0 }}>
           <div className="ed-container">
             <Reveal>
-              <p className="ed-eyebrow">The roster</p>
-              <h2 className="ed-h2">Five Kiros. Five specialties.</h2>
+              <p className="ed-eyebrow">Jobs to hand off</p>
+              <h2 className="ed-h2">Build the roster your work needs.</h2>
               <p className="ed-body ed-body-lead">
-                Each is a real bot in the console, with its own memory, its own approval policy,
-                and its own boundary. Name them what you want. Give them the jobs you'd otherwise
-                do yourself.
+                Start with one durable responsibility, not a generic helper. Add another agent
+                when the work needs a different context, policy, schedule, or point of view.
               </p>
             </Reveal>
 
@@ -245,15 +321,15 @@ export default function LandingPage({ onEnterConsole, onOpenEngineering }: Props
         <section className="ed-band">
           <div className="ed-container">
             <Reveal>
-              <p className="ed-eyebrow">The stance</p>
+              <p className="ed-eyebrow">The division of work</p>
               <h2 className="ed-h2">
-                The point of a control plane is that some of the buttons don't exist.
+                Kiro does the work. Kiro Bot keeps it moving.
               </h2>
               <p className="ed-body" style={{ marginTop: "1.75rem", fontSize: "1.125rem" }}>
-                We could have written a sixth Kiro that pushes code and opens pull requests. We
-                didn't. The reviewer is a different Kiro. The artifact is hashed. The handoff is a
-                request only you can send. If your product's edge is shipping code faster than a
-                human can read it, ours is the opposite bet.
+                Kiro remains the reasoning and tool-use engine. Kiro Bot adds the operating layer
+                around it: identity, memory, queues, schedules, channels, coordination, isolated
+                workspaces, approvals, and evidence. It is built for work that should survive the
+                chat window without surrendering the final decision.
               </p>
               <button
                 type="button"
@@ -261,7 +337,7 @@ export default function LandingPage({ onEnterConsole, onOpenEngineering }: Props
                 onClick={onOpenEngineering}
                 style={{ marginTop: "2rem" }}
               >
-                How we make that safe <span className="arrow">→</span>
+                See the system under the surface <span className="arrow">→</span>
               </button>
             </Reveal>
           </div>
@@ -271,11 +347,11 @@ export default function LandingPage({ onEnterConsole, onOpenEngineering }: Props
         <section className="ed-section">
           <div className="ed-container">
             <Reveal>
-              <p className="ed-eyebrow">Get it running</p>
-              <h2 className="ed-h2">Three commands. Loopback only.</h2>
+              <p className="ed-eyebrow">Start local</p>
+              <h2 className="ed-h2">Your first agent is three commands away.</h2>
               <p className="ed-body ed-body-lead">
-                Kiro Bot is a single Python daemon. It binds to 127.0.0.1 until you put it behind
-                the auth of your choice.
+                Kiro Bot runs against the Kiro CLI you already use and binds to your machine by
+                default. Create a named agent, open the control room, and hand it a real job.
               </p>
             </Reveal>
 
@@ -301,29 +377,47 @@ $ `}<span className="cmd">uv run kiro-bot serve</span>{`   `}<span className="cm
             <Reveal delay={0.18}>
               <div className="ed-install-notes">
                 <div>
-                  <p className="ed-eyebrow">Then</p>
+                  <p className="ed-eyebrow">Start with one job</p>
                   <p className="ed-body">
-                    Open the console. Name your Builder. Name your Reviewer. Bind Slack, GitHub,
-                    or Telegram if you want them reachable from your phone.
+                    Define the outcome, the repo, and what must come back to you for approval. Let
+                    the agent complete one useful task before adding schedules or more roles.
                   </p>
                 </div>
                 <div>
-                  <p className="ed-eyebrow">Wanted next</p>
+                  <p className="ed-eyebrow">Then grow the roster</p>
                   <p className="ed-body">
-                    Auth, org boundaries, and a publisher that opens pull requests. Reviewer-driven
-                    push. Bot-to-bot mailboxes.{" "}
+                    Add a reviewer, connect the channel where work arrives, or turn a reliable
+                    prompt into a routine.{" "}
                     <button
                       type="button"
                       className="ed-inline-link ed-inline-button"
                       onClick={onOpenEngineering}
                     >
-                      What we haven't built yet
+                      See the honest roadmap
                     </button>
                     .
                   </p>
                 </div>
               </div>
             </Reveal>
+          </div>
+        </section>
+
+        {/* FAQ */}
+        <section id="faq" className="ed-band">
+          <div className="ed-container">
+            <Reveal>
+              <p className="ed-eyebrow">Questions worth asking</p>
+              <h2 className="ed-h2">Know what runs. Know where it stops.</h2>
+            </Reveal>
+            <div className="ed-faq">
+              {FAQS.map((item) => (
+                <details key={item.question} className="ed-faq-item">
+                  <summary>{item.question}</summary>
+                  <p>{item.answer}</p>
+                </details>
+              ))}
+            </div>
           </div>
         </section>
       </main>
@@ -337,15 +431,16 @@ $ `}<span className="cmd">uv run kiro-bot serve</span>{`   `}<span className="cm
                 Kiro Bot
               </div>
               <p className="ed-footer-tag">
-                An independent orchestration layer around Kiro's Agent Client Protocol. Kiro
-                remains the execution engine.
+                The local control plane for persistent Kiro agents, recurring work, and governed
+                coding handoffs.
               </p>
             </div>
             <div className="ed-footer-col">
               <p className="ed-eyebrow">Product</p>
               <ul>
                 <li><button type="button" onClick={onEnterConsole}>Console</button></li>
-                <li><button type="button" onClick={() => scrollTo("roster")}>The roster</button></li>
+                <li><button type="button" onClick={() => scrollTo("why")}>Why Kiro Bot</button></li>
+                <li><button type="button" onClick={() => scrollTo("roster")}>Jobs</button></li>
                 <li><button type="button" onClick={onOpenEngineering}>How it works</button></li>
               </ul>
             </div>
@@ -354,9 +449,9 @@ $ `}<span className="cmd">uv run kiro-bot serve</span>{`   `}<span className="cm
               <ul>
                 <li>Builder</li>
                 <li>Reviewer</li>
-                <li>Foreman</li>
-                <li>Watcher</li>
-                <li>Planner</li>
+                <li>Triage Agent</li>
+                <li>Operator</li>
+                <li>Coordinator</li>
               </ul>
             </div>
             <div className="ed-footer-col">
