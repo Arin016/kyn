@@ -2,6 +2,8 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .venv/
+node_modules/
+*.tsbuildinfo
 dist/
 build/
 *.egg-info/
@@ -12,3 +14,4 @@ build/
 .DS_Store
 .coverage
 htmlcov/
+reference/kiro/screenshots/

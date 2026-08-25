@@ -1,0 +1,71 @@
+:root {
+  /* Console — brand-adjacent to kiro.dev. Pure black canvas, bright Kiro violet.
+     Space Grotesk for display; Inter for UI. Pills on the send button. */
+  color-scheme: dark;
+
+  --bg: #0A0A0A;
+  --bg-sidebar: #0E0E0E;
+  --bg-user-bubble: #1E1524;
+  --bg-composer: #131313;
+  --bg-raised: #161616;
+  --bg-hover: rgba(176, 139, 255, 0.08);
+  --code-bg: #060606;
+
+  --fg: #FFFFFF;
+  --fg-secondary: #D4D4D8;
+  --fg-muted: #A0A0A5;
+  --fg-faint: #6D6D72;
+
+  --border: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.12);
+
+  --accent: #B08BFF;
+  --accent-fg: #0A0A0A;
+  --brand: #B08BFF;
+  --brand-deep: #8B5CF6;
+  --brand-glow: rgba(176, 139, 255, 0.35);
+  --success: #4ADE80;
+  --warning: #FBBF24;
+  --danger: #F87171;
+
+  --glass-bg: rgba(255, 255, 255, 0.03);
+  --glass-border: rgba(255, 255, 255, 0.08);
+
+  --font-display: "Space Grotesk Variable", "Space Grotesk", "Inter Variable", -apple-system, sans-serif;
+  --font-ui: "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+
+  --r-composer: 1.5rem;
+  --r-bubble: 1rem;
+  --r-code: 0.75rem;
+
+  --shadow-focus: 0 0 0 2px rgba(167, 139, 250, 0.55);
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #ffffff;
+  --bg-sidebar: #f9f9f9;
+  --bg-user-bubble: #f4f4f4;
+  --bg-composer: #ffffff;
+  --bg-raised: #f4f4f4;
+  --bg-hover: rgba(0, 0, 0, 0.05);
+  --code-bg: #f6f8fa;
+
+  --fg: #0d0d0d;
+  --fg-secondary: #3d3d3d;
+  --fg-muted: #676767;
+  --fg-faint: #8f8f8f;
+
+  --border: #e5e5e5;
+  --border-strong: #d4d4d4;
+
+  --accent: #0d0d0d;
+  --accent-fg: #ffffff;
+  --brand: #7c5cff;
+  --success: #16a34a;
+  --warning: #d97706;
+  --danger: #dc2626;
+}

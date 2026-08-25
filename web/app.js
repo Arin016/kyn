@@ -16,6 +16,11 @@ const state = {
   channels: [],
   channelEvents: [],
   memoryEvents: [],
+  surface: { kind: "local" },
+  unread: {},
+  roomSocket: null,
+  roomRetry: null,
+  inspectPinned: false,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -39,6 +44,11 @@ const elements = {
   channelList: $("#channel-list"), channelEventList: $("#channel-event-list"),
   channelDialog: $("#channel-dialog"), channelForm: $("#channel-form"), channelError: $("#channel-error"),
   memoryList: $("#memory-list"),
+  surfaceList: $("#surface-list"),
+  surfaceEyebrow: $("#surface-eyebrow"),
+  composerMirror: $("#composer-mirror"),
+  overflowButton: $("#overflow-button"),
+  overflowMenu: $("#overflow-menu"),
 };
 
 function request(path, options = {}) {
@@ -70,14 +80,25 @@ function botMeta(bot) { return bot?.model || bot?.agent || bot?.cwd || "Persiste
 function setConnection(kind, label) { elements.dot.className = `connection-dot ${kind}`; elements.connection.textContent = label; }
 
 function setRunState(kind, title, detail) {
+  const remote = state.surface.kind === "channel";
   elements.runStatus.dataset.state = kind;
   elements.runStatus.textContent = title;
   elements.runCardState.textContent = title === "Idle" ? "No run in progress" : title;
   elements.runCardDetail.textContent = detail || "Tool activity and approval requests will appear here.";
   elements.pulse.classList.toggle("running", kind === "running");
   elements.stop.disabled = kind !== "running" && kind !== "waiting";
-  elements.send.disabled = !state.bot || kind === "running" || kind === "waiting";
-  elements.input.disabled = !state.bot;
+  elements.send.disabled = !state.bot || remote || kind === "running" || kind === "waiting";
+  elements.input.disabled = !state.bot || remote;
+  syncInspect(kind);
+}
+
+function syncInspect(kind = elements.runStatus?.dataset.state) {
+  if (!elements.activity) return;
+  const busy = kind === "running" || kind === "waiting";
+  const perms = Boolean(elements.permissionList?.children.length);
+  const open = state.inspectPinned || busy || perms;
+  elements.activity.classList.toggle("is-hidden", !open);
+  elements.toggleActivity?.setAttribute("aria-expanded", String(open));
 }
 
 function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
@@ -108,6 +129,178 @@ function renderBots() {
     button.addEventListener("click", () => selectBot(bot));
     elements.botList.append(button);
   });
+  renderSurfaces();
+}
+
+function surfaceKey(surface) {
+  if (!surface || surface.kind === "local") return "local";
+  return `channel:${surface.id}:${surface.threadKey || ""}`;
+}
+
+function channelById(id) {
+  return state.channels.find((channel) => channel.id === id);
+}
+
+function threadEvents(bindingId, threadKey) {
+  return state.channelEvents
+    .filter((event) => event.binding_id === bindingId && (!threadKey || event.thread_key === threadKey))
+    .slice()
+    .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+}
+
+function latestThread(channel) {
+  const events = state.channelEvents.filter((event) => event.binding_id === channel.id);
+  if (!events.length) return { threadKey: "", preview: "Waiting for the first message", live: false };
+  const newest = events.slice().sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
+  return {
+    threadKey: newest.thread_key,
+    preview: String(newest.text || "Remote request").replaceAll("\n", " "),
+    live: ["queued", "running"].includes(newest.status),
+  };
+}
+
+function renderSurfaces() {
+  if (!elements.surfaceList) return;
+  clear(elements.surfaceList);
+  const local = make("button", "surface-item");
+  local.type = "button";
+  local.setAttribute("aria-current", state.surface.kind === "local" ? "page" : "false");
+  local.append(make("span", `surface-mark${state.surface.kind === "local" && state.run ? " live" : ""}`));
+  const localCopy = make("span", "surface-item-copy");
+  localCopy.append(make("span", "surface-name", "Laptop"));
+  localCopy.append(make("span", "surface-meta", "This computer"));
+  local.append(localCopy);
+  local.addEventListener("click", () => selectSurface({ kind: "local" }));
+  elements.surfaceList.append(local);
+  state.channels.forEach((channel) => {
+    const thread = latestThread(channel);
+    const key = `channel:${channel.id}:${thread.threadKey}`;
+    const button = make("button", "surface-item");
+    button.type = "button";
+    const selected = state.surface.kind === "channel" && state.surface.id === channel.id;
+    button.setAttribute("aria-current", selected ? "page" : "false");
+    button.append(make("span", `surface-mark${thread.live ? " live" : ""}`));
+    const copy = make("span", "surface-item-copy");
+    copy.append(make("span", "surface-name", channel.kind === "telegram" ? "Telegram" : channel.name));
+    copy.append(make("span", "surface-meta", thread.preview.slice(0, 48)));
+    button.append(copy);
+    const unread = state.unread[key] || 0;
+    if (unread) button.append(make("span", "surface-unread", String(unread)));
+    button.addEventListener("click", () => selectSurface({ kind: "channel", id: channel.id, threadKey: thread.threadKey }));
+    elements.surfaceList.append(button);
+  });
+}
+
+async function selectSurface(surface) {
+  state.surface = surface;
+  const remote = surface.kind === "channel";
+  elements.composer.classList.toggle("is-remote", remote);
+  if (elements.composerMirror) elements.composerMirror.hidden = !remote;
+  const kind = elements.runStatus.dataset.state || "idle";
+  elements.send.disabled = !state.bot || remote || kind === "running" || kind === "waiting";
+  elements.input.disabled = !state.bot || remote;
+  if (elements.surfaceEyebrow) {
+    if (!remote) elements.surfaceEyebrow.textContent = "Laptop";
+    else {
+      const channel = channelById(surface.id);
+      elements.surfaceEyebrow.textContent = channel?.kind === "telegram" ? "Telegram" : (channel?.name || "Remote");
+    }
+  }
+  if (remote) {
+    elements.hint.textContent = "Reply from iPhone. This view follows the live thread.";
+    state.unread[surfaceKey(surface)] = 0;
+    renderRemoteThread();
+    const newest = threadEvents(surface.id, surface.threadKey).at(-1);
+    if (newest && ["queued", "running"].includes(newest.status) && newest.run_id) followChannelRun(newest);
+  } else if (state.bot) {
+    elements.hint.textContent = botMeta(state.bot);
+    try {
+      const data = await request(`/api/bots/${encodeURIComponent(botName(state.bot))}/history`);
+      renderHistory(data);
+    } catch {
+      renderHistory([]);
+    }
+  }
+  renderSurfaces();
+}
+
+function renderRemoteThread() {
+  const events = threadEvents(state.surface.id, state.surface.threadKey);
+  const channel = channelById(state.surface.id);
+  const inner = conversationShell();
+  if (!events.length) {
+    const empty = make("div", "history-empty");
+    empty.append(make("h2", "", `Waiting on ${channel?.name || "this channel"}`));
+    empty.append(make("p", "", "Send a message from your phone. It will appear here and stream while Kiro works."));
+    inner.append(empty);
+    return;
+  }
+  for (const event of events) {
+    addMessage(event.text, "channel", addTurn(channel?.kind === "telegram" ? "Telegram" : (channel?.kind || "Remote")));
+    if (event.response_text) addMessage(event.response_text, "assistant", addTurn("Kiro"));
+    else if (["queued", "running"].includes(event.status)) {
+      const turn = addTurn("Kiro");
+      const node = addMessage("", "assistant", turn);
+      node.append(make("span", "streaming-cursor"));
+      state.messages.set("assistant", node);
+    } else if (event.error) addMessage(event.error, "thinking", addTurn("FAILED"));
+  }
+}
+
+function upsertChannelEvent(event) {
+  const index = state.channelEvents.findIndex((item) => item.id === event.id);
+  if (index >= 0) state.channelEvents[index] = event;
+  else state.channelEvents.unshift(event);
+}
+
+function followChannelRun(event) {
+  if (!event.run_id) return;
+  if (state.run?.id === event.run_id) return;
+  if (state.socket) { state.socket.onclose = null; state.socket.close(); state.socket = null; }
+  state.run = { id: event.run_id };
+  state.lastEvent = 0;
+  setRunState("running", "Working", "Live from your phone…");
+  connectRun();
+}
+
+function connectLive() {
+  const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+  try {
+    const socket = new WebSocket(`${protocol}//${location.host}/ws/live`);
+    state.roomSocket = socket;
+    socket.onopen = () => setConnection("online", "Live room connected");
+    socket.onmessage = (message) => {
+      let payload = {};
+      try { payload = JSON.parse(message.data); } catch { return; }
+      if (payload.type === "hello" || payload.type === "ping") return;
+      if (payload.type !== "channel_event" || !payload.event) return;
+      upsertChannelEvent(payload.event);
+      const key = `channel:${payload.channel?.id}:${payload.event.thread_key}`;
+      const viewing = state.surface.kind === "channel" && state.surface.id === payload.channel?.id;
+      if (viewing) {
+        state.surface.threadKey = payload.event.thread_key;
+        const status = payload.event.status;
+        if (status === "queued" || ["responded", "stored", "failed", "cancelled"].includes(status)) {
+          renderRemoteThread();
+        }
+        if (["queued", "running"].includes(status)) followChannelRun(payload.event);
+        if (status === "responded" || status === "stored") setRunState("idle", "Idle", "Phone reply delivered.");
+        if (status === "failed") setRunState("error", "Error", payload.event.error || "Remote turn failed");
+      } else {
+        state.unread[key] = (state.unread[key] || 0) + (payload.event.status === "queued" ? 1 : 0);
+        if (payload.event.status === "queued") toast(`New ${payload.channel?.kind || "channel"} message`);
+      }
+      renderSurfaces();
+      renderChannels();
+    };
+    socket.onclose = () => {
+      if (state.roomSocket !== socket) return;
+      setConnection("online", "Reconnecting live room");
+      state.roomRetry = setTimeout(connectLive, 1500);
+    };
+  } catch {
+    state.roomRetry = setTimeout(connectLive, 2000);
+  }
 }
 
 function conversationShell() {
@@ -127,7 +320,8 @@ function addTurn(label) {
 
 function addMessage(text, role, target) {
   const message = make("div", `message ${role}`, text);
-  (target || addTurn(role === "user" ? "YOU" : "KIRO BOT")).append(message);
+  const fallback = role === "user" || role === "channel" ? "You" : "Kiro";
+  (target || addTurn(fallback)).append(message);
   scrollToBottom();
   return message;
 }
@@ -157,16 +351,15 @@ function renderHistory(data) {
   const inner = conversationShell();
   if (!turns.length) {
     const empty = make("div", "history-empty");
-    empty.append(make("p", "eyebrow", "READY WHEN YOU ARE"));
-    empty.append(make("h2", "", "Start the first run."));
+    empty.append(make("h2", "", "What should Kiro do?"));
     empty.append(make("p", "", "Ask this bot to inspect a workspace, plan a task, or take action with your approval."));
     inner.append(empty);
     return;
   }
   for (const turn of turns) {
     const prompt = turn.prompt || turn.message || turn.input || "";
-    if (prompt) addMessage(prompt, "user", addTurn("YOU"));
-    const assistantTurn = addTurn("KIRO BOT");
+    if (prompt) addMessage(prompt, "user", addTurn("You"));
+    const assistantTurn = addTurn("Kiro");
     const answer = make("div", "message assistant");
     let sawText = false;
     for (const storedEvent of historyEvents(turn)) {
@@ -199,11 +392,14 @@ async function loadBots() {
 }
 
 async function selectBot(bot, shouldPush = true) {
-  closeRun(); state.bot = bot; renderBots(); elements.title.textContent = botName(bot); elements.input.disabled = false;
-  elements.hint.textContent = `Persistent session · ${botMeta(bot)}`;
-  setRunState("idle", "Idle");
+  closeRun(); state.bot = bot; renderBots(); elements.title.textContent = botName(bot);
   if (shouldPush) { const url = new URL(location.href); url.searchParams.set("bot", botName(bot)); history.replaceState({}, "", url); }
   clear(elements.eventList); elements.activityEmpty.hidden = false; clear(elements.permissionList); elements.permissionSection.hidden = true;
+  state.surface = { kind: "local" };
+  elements.composer.classList.remove("is-remote");
+  if (elements.composerMirror) elements.composerMirror.hidden = true;
+  elements.hint.textContent = botMeta(bot);
+  setRunState("idle", "Idle");
   const inner = conversationShell(); inner.append(make("div", "history-empty", "Loading conversation…"));
   try {
     const data = await request(`/api/bots/${encodeURIComponent(botName(bot))}/history`);
@@ -311,11 +507,16 @@ function renderChannels() {
   if (!state.channels.length) { elements.channelList.append(make("p", "activity-empty", "No remote channels yet.")); }
   state.channels.forEach((channel) => {
     const hookKind = channel.kind === "webhook" ? "webhook" : channel.kind;
-    const hookPath = `/hooks/${hookKind}/${encodeURIComponent(channel.id)}`;
+    const polling = channel.kind === "telegram";
+    const hookPath = polling ? "Laptop polls Telegram · no public URL" : `/hooks/${hookKind}/${encodeURIComponent(channel.id)}`;
     const delivery = channel.outbound_delivery_configured ? "Replies enabled" : "Replies stored here";
     const card = managementCard(channel.name, `${channel.kind.toUpperCase()} · ${delivery}\n${hookPath}`, channel.enabled ? "active" : "paused", channel.enabled);
-    const copy = make("button", "danger-link", "Copy webhook URL");
-    copy.addEventListener("click", async () => { try { await navigator.clipboard.writeText(`${location.origin}${hookPath}`); toast("Webhook URL copied."); } catch { toast("Could not copy the URL.", true); } });
+    const copy = make("button", "danger-link", polling ? "Polling channel" : "Copy webhook URL");
+    copy.disabled = polling;
+    copy.addEventListener("click", async () => {
+      if (polling) return;
+      try { await navigator.clipboard.writeText(`${location.origin}${hookPath}`); toast("Webhook URL copied."); } catch { toast("Could not copy the URL.", true); }
+    });
     const toggle = make("button", "danger-link", channel.enabled ? "Pause" : "Resume"); toggle.style.marginLeft = "12px";
     toggle.addEventListener("click", async () => { try { await request(`/api/channels/${encodeURIComponent(channel.id)}`, { method:"PATCH", body:JSON.stringify({ enabled:!channel.enabled }) }); await loadManagement(); } catch (error) { toast(error.message, true); } });
     const remove = make("button", "danger-link", "Delete"); remove.style.marginLeft = "12px";
@@ -394,7 +595,8 @@ async function loadManagement() {
       request(`/api/channels?bot_name=${name}`), request("/api/channel-events?limit=50"), request(`/api/bots/${name}/memory?limit=50`),
     ]);
     state.routines = routines; state.plugins = plugins; state.bindings = bindings; state.delegations = delegations; state.codingExecutions = codingExecutions; state.channels = channels; state.channelEvents = channelEvents; state.memoryEvents = memory.events || [];
-    renderPolicy(policy); renderRoutines(); renderPlugins(); renderAudit(audit); renderDelegations(); renderCodingExecutions(); renderChannels(); renderMemory();
+    renderPolicy(policy); renderRoutines(); renderPlugins(); renderAudit(audit); renderDelegations(); renderCodingExecutions(); renderChannels(); renderMemory(); renderSurfaces();
+    if (state.surface.kind === "channel") renderRemoteThread();
   } catch (error) { toast(error.message || "Could not load bot controls", true); }
 }
 
@@ -424,7 +626,7 @@ function receiveEvent(payload) {
   const text = eventText(event);
   if (kind === "text" || kind === "agent_message_chunk" || kind === "assistant") {
     let node = state.messages.get("assistant");
-    if (!node) { const turn = addTurn("KIRO BOT"); node = addMessage("", "assistant", turn); node.append(make("span", "streaming-cursor")); state.messages.set("assistant", node); }
+    if (!node) { const turn = addTurn("Kiro"); node = addMessage("", "assistant", turn); node.append(make("span", "streaming-cursor")); state.messages.set("assistant", node); }
     const cursor = node.querySelector(".streaming-cursor");
     if (cursor) node.removeChild(cursor);
     node.append(document.createTextNode(text));
@@ -456,6 +658,15 @@ function showPermission(event) {
   const allow = make("button", "approve", "Allow once"); allow.type = "button"; allow.addEventListener("click", () => decidePermission(id, "allow_once"));
   const reject = make("button", "", "Reject"); reject.type = "button"; reject.addEventListener("click", () => decidePermission(id, "reject"));
   buttons.append(allow, reject); card.append(buttons); elements.permissionList.append(card);
+  const parent = elements.conversation.querySelector(".conversation-inner");
+  if (parent && !parent.querySelector(`[data-thread-permission="${CSS.escape(id)}"]`)) {
+    const notice = make("div", "thread-notice");
+    notice.dataset.threadPermission = id;
+    notice.textContent = event.title || "Kiro needs permission to continue. Allow or deny in Inspect.";
+    parent.append(notice);
+    scrollToBottom();
+  }
+  syncInspect("waiting");
 }
 
 async function decidePermission(id, decision) {
@@ -465,6 +676,7 @@ async function decidePermission(id, decision) {
     await request(`/api/runs/${encodeURIComponent(state.run.id)}/permissions/${encodeURIComponent(id)}`, { method: "POST", body: JSON.stringify(body) });
     state.permissions.delete(id); elements.permissionList.querySelector(`[data-permission-id="${CSS.escape(id)}"]`)?.remove();
     elements.permissionSection.hidden = !elements.permissionList.children.length;
+    document.querySelector(`[data-thread-permission="${CSS.escape(id)}"]`)?.remove();
     setRunState("running", "Working", "Approval recorded. Continuing the run.");
   } catch (error) { toast(error.message || "Could not submit decision", true); }
 }
@@ -520,8 +732,9 @@ async function pollRun() {
 async function submitTurn(event) {
   event.preventDefault();
   const message = elements.input.value.trim(); if (!message || !state.bot || state.run) return;
+  if (state.surface.kind === "channel") return;
   const priorEmpty = elements.conversation.querySelector(".history-empty"); priorEmpty?.remove();
-  addMessage(message, "user", addTurn("YOU")); elements.input.value = ""; resizeInput(); setRunState("running", "Starting", "Creating a persistent Kiro run…");
+  addMessage(message, "user", addTurn("You")); elements.input.value = ""; resizeInput(); setRunState("running", "Starting", "Creating a persistent Kiro run…");
   try {
     const data = await request(`/api/bots/${encodeURIComponent(botName(state.bot))}/turns`, { method:"POST", body:JSON.stringify({ message }) });
     const id = data.run_id || data.id || data.run?.id;
@@ -667,7 +880,8 @@ async function createChannel(event) {
   try {
     await request("/api/channels", { method:"POST", body:JSON.stringify(payload) });
     elements.channelDialog.close(); elements.channelForm.reset();
-    elements.channelForm.querySelector('[name="trigger_prefix"]').value = "@kiro";
+    const prefix = elements.channelForm.querySelector('[name="trigger_prefix"]');
+    prefix.value = String(elements.channelForm.querySelector('[name="kind"]').value) === "telegram" ? "" : "@kiro";
     toast("Remote channel created."); await loadManagement();
   } catch (error) { elements.channelError.textContent = error.message || "Could not create channel"; }
 }
@@ -675,7 +889,15 @@ async function createChannel(event) {
 function switchPanel(name) {
   document.querySelectorAll(".panel-tabs button").forEach((button) => button.setAttribute("aria-selected", String(button.dataset.panel === name)));
   document.querySelectorAll(".panel-view").forEach((view) => { view.hidden = view.dataset.view !== name; });
+  state.inspectPinned = true;
+  syncInspect(elements.runStatus.dataset.state);
   if (name !== "run") loadManagement();
+}
+
+function openOverflow(open) {
+  if (!elements.overflowMenu) return;
+  elements.overflowMenu.hidden = !open;
+  elements.overflowButton?.setAttribute("aria-expanded", String(open));
 }
 
 elements.composer.addEventListener("submit", submitTurn);
@@ -704,32 +926,56 @@ $("#new-channel-button").addEventListener("click", () => { if (!state.bot) retur
 $("#routine-kind").addEventListener("change", (event) => { const once = event.target.value === "once"; $("#interval-field").hidden = once; $("#once-field").hidden = !once; });
 elements.delegationForm.querySelector('[name="tasks"]').placeholder = "researcher: Investigate the design\nbuilder: Implement the fix <- 1\nreviewer: Review the result <- 2";
 setInterval(() => {
-  const teams = document.querySelector('.panel-view[data-view="teams"]');
-  if (teams && !teams.hidden) refreshDelegations();
-}, 2000);
-setInterval(() => {
-  const coding = document.querySelector('.panel-view[data-view="coding"]');
-  if (coding && !coding.hidden) refreshCodingExecutions();
+  const work = document.querySelector('.panel-view[data-view="work"]');
+  if (work && !work.hidden) {
+    refreshDelegations();
+    refreshCodingExecutions();
+  }
 }, 2000);
 $("#plugin-transport").addEventListener("change", (event) => { const http = event.target.value === "http"; $("#stdio-fields").hidden = http; $("#http-field").hidden = !http; });
+function syncChannelKindForm() {
+  const kind = String($("#channel-kind").value);
+  const telegram = kind === "telegram";
+  const whatsapp = kind === "whatsapp";
+  $("#verify-token-field").hidden = !whatsapp;
+  const secret = elements.channelForm.querySelector('[name="signing_secret_env"]');
+  const outbound = elements.channelForm.querySelector('[name="outbound_token_env"]');
+  const prefix = elements.channelForm.querySelector('[name="trigger_prefix"]');
+  const senders = elements.channelForm.querySelector('[name="allowed_senders"]');
+  secret.placeholder = telegram ? "KIRO_TELEGRAM_BOT_TOKEN" : (whatsapp ? "KIRO_WHATSAPP_APP_SECRET" : "KIRO_SLACK_SIGNING_SECRET");
+  outbound.placeholder = telegram ? "Leave empty for Telegram" : "Optional · KIRO_SLACK_BOT_TOKEN";
+  if (telegram && prefix.value === "@kiro") prefix.value = "";
+  if (!telegram && prefix.value === "") prefix.value = "@kiro";
+  senders.placeholder = telegram ? "Your Telegram user id from @userinfobot" : "User IDs, GitHub logins, or email addresses";
+}
+$("#channel-kind").addEventListener("change", syncChannelKindForm);
+syncChannelKindForm();
 document.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => document.getElementById(button.dataset.close).close()));
 elements.toggleActivity.addEventListener("click", () => {
-  const hidden = elements.activity.classList.toggle("is-hidden");
-  elements.toggleActivity.setAttribute("aria-expanded", String(!hidden));
+  const willOpen = elements.activity.classList.contains("is-hidden");
+  state.inspectPinned = willOpen;
+  elements.activity.classList.toggle("is-hidden", !willOpen);
+  elements.toggleActivity.setAttribute("aria-expanded", String(willOpen));
 });
 $("#close-activity").addEventListener("click", () => {
+  state.inspectPinned = false;
   elements.activity.classList.add("is-hidden");
   elements.toggleActivity.setAttribute("aria-expanded", "false");
 });
+elements.overflowButton?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  openOverflow(elements.overflowMenu.hidden);
+});
+elements.overflowMenu?.querySelectorAll("[data-overflow]").forEach((button) => {
+  button.addEventListener("click", () => {
+    openOverflow(false);
+    switchPanel(button.dataset.overflow);
+  });
+});
+document.addEventListener("click", () => openOverflow(false));
 elements.mobileMenu.addEventListener("click", () => elements.rail.classList.toggle("is-open"));
 window.addEventListener("popstate", () => { const name = new URLSearchParams(location.search).get("bot"); const bot = state.bots.find((item) => botName(item) === name); if (bot) selectBot(bot, false); });
 
-// On tablet/mobile the activity panel is a drawer. Start it closed so the
-// conversation and composer are usable immediately instead of being covered.
-if (window.matchMedia("(max-width: 1080px)").matches) {
-  elements.activity.classList.add("is-hidden");
-  elements.toggleActivity.setAttribute("aria-expanded", "false");
-}
-
 setRunState("idle", "Idle");
 loadBots();
+connectLive();
