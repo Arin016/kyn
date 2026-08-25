@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+dist/
+build/
+*.egg-info/
+.kiro-bot/
+.env
+.env.*
+!.env.example
+.DS_Store
+.coverage
+htmlcov/

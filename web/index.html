@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0c1019" />
+    <title>Kiro Bot · Control room</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="app.css" />
+  </head>
+  <body>
+    <main class="app-shell" aria-label="Kiro Bot control room">
+      <aside class="bot-rail" aria-label="Bots">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">K</span>
+          <span class="brand-name">Kiro <b>Bot</b></span>
+        </div>
+        <button class="new-bot-button" id="new-bot-button" type="button">
+          <span aria-hidden="true">+</span> New bot
+        </button>
+        <div class="rail-heading"><span>Bots</span><span id="bot-count"></span></div>
+        <nav id="bot-list" class="bot-list" aria-label="Available bots" aria-live="polite"></nav>
+        <div class="rail-footer">
+          <span class="connection-dot" id="connection-dot" aria-hidden="true"></span>
+          <span id="connection-label">Connecting</span>
+        </div>
+      </aside>
+
+      <section class="workspace">
+        <header class="workspace-header">
+          <div class="header-main">
+            <button class="mobile-menu" id="mobile-menu" type="button" aria-label="Show bots">☰</button>
+            <div>
+              <div class="eyebrow">PERSISTENT AGENT</div>
+              <h1 id="bot-title">Choose a bot</h1>
+            </div>
+          </div>
+          <div class="header-actions">
+            <span class="status-pill" id="run-status" data-state="idle">Idle</span>
+            <button class="icon-button" id="toggle-activity" type="button" aria-label="Show activity panel" aria-expanded="true">◫</button>
+          </div>
+        </header>
+
+        <section class="conversation" id="conversation" aria-live="polite" aria-label="Conversation">
+          <div class="welcome-state" id="welcome-state">
+            <div class="welcome-orb" aria-hidden="true"><span>✦</span></div>
+            <p class="eyebrow">PERSISTENT BY DESIGN</p>
+            <h2>Give your work a memory.</h2>
+            <p>Choose a bot or create one. Its Kiro session, decisions, and activity stay connected across runs.</p>
+          </div>
+        </section>
+
+        <form class="composer" id="composer">
+          <label class="sr-only" for="message">Message your bot</label>
+          <textarea id="message" name="message" rows="1" placeholder="Ask your bot to investigate, build, or decide…" disabled></textarea>
+          <div class="composer-footer">
+            <span id="composer-hint">Select a bot to begin</span>
+            <div class="composer-actions">
+              <button class="stop-button" id="stop-button" type="button" disabled>Stop</button>
+              <button class="send-button" id="send-button" type="submit" disabled><span>Send</span><span aria-hidden="true">↑</span></button>
+            </div>
+          </div>
+        </form>
+      </section>
+
+      <aside class="activity-panel" id="activity-panel" aria-label="Run activity">
+        <header class="activity-header">
+          <div>
+            <p class="eyebrow">LIVE CONTEXT</p>
+            <h2>Activity</h2>
+          </div>
+          <button class="icon-button activity-close" id="close-activity" type="button" aria-label="Close activity panel">×</button>
+        </header>
+        <nav class="panel-tabs" aria-label="Control room views">
+          <button type="button" data-panel="run" aria-selected="true">Run</button>
+          <button type="button" data-panel="routines" aria-selected="false">Routines</button>
+          <button type="button" data-panel="channels" aria-selected="false">Channels</button>
+          <button type="button" data-panel="memory" aria-selected="false">Memory</button>
+          <button type="button" data-panel="coding" aria-selected="false">Coding</button>
+          <button type="button" data-panel="teams" aria-selected="false">Teams</button>
+          <button type="button" data-panel="safety" aria-selected="false">Safety</button>
+        </nav>
+        <div class="panel-view" data-view="run">
+          <div class="run-card" id="run-card">
+            <div class="run-card-top"><span class="pulse" aria-hidden="true"></span><span id="run-card-state">No run in progress</span></div>
+            <p id="run-card-detail">Tool activity and approval requests will appear here.</p>
+          </div>
+          <section class="permission-section" id="permission-section" hidden aria-label="Permission requests">
+            <p class="section-label">AWAITING APPROVAL</p>
+            <div id="permission-list"></div>
+          </section>
+          <section class="event-section" aria-label="Activity events">
+            <p class="section-label">RUN TIMELINE</p>
+            <ol class="event-list" id="event-list"></ol>
+            <p class="activity-empty" id="activity-empty">No activity yet.</p>
+          </section>
+        </div>
+        <div class="panel-view" data-view="routines" hidden>
+          <div class="panel-action-row"><p>Scheduled work for this bot.</p><button class="mini-primary" id="new-routine-button" type="button">+ Add</button></div>
+          <div class="management-list" id="routine-list"><p class="activity-empty">Choose a bot to view routines.</p></div>
+        </div>
+        <div class="panel-view" data-view="channels" hidden>
+          <div class="panel-action-row"><p>Reach this bot securely from Slack, GitHub, email, or another app.</p><button class="mini-primary" id="new-channel-button" type="button">+ Add</button></div>
+          <div class="management-list" id="channel-list"><p class="activity-empty">No remote channels yet.</p></div>
+          <section class="connections-section">
+            <p class="section-label">RECENT REMOTE REQUESTS</p>
+            <div class="management-list" id="channel-event-list"><p class="activity-empty">No remote requests yet.</p></div>
+          </section>
+        </div>
+        <div class="panel-view" data-view="memory" hidden>
+          <div class="panel-action-row"><p>Durable evidence shared across the local chat and authenticated external threads.</p></div>
+          <div class="management-list" id="memory-list"><p class="activity-empty">No shared memories yet.</p></div>
+        </div>
+        <div class="panel-view" data-view="coding" hidden>
+          <div class="panel-action-row"><p>Build, verify, repair, and review in an isolated worktree.</p><button class="mini-primary" id="new-coding-button" type="button">+ Add</button></div>
+          <div class="management-list" id="coding-list"><p class="activity-empty">No coding executions yet.</p></div>
+        </div>
+        <div class="panel-view" data-view="teams" hidden>
+          <div class="panel-action-row"><p>Coordinate several bots on one goal.</p><button class="mini-primary" id="new-delegation-button" type="button">+ Add</button></div>
+          <div class="management-list" id="delegation-list"><p class="activity-empty">No team plans yet.</p></div>
+        </div>
+        <div class="panel-view" data-view="safety" hidden>
+          <form class="policy-form" id="policy-form">
+            <p class="section-label">TOOL APPROVALS</p>
+            <label>Default behavior
+              <select id="approval-mode" name="approval_mode">
+                <option value="ask">Ask me</option>
+                <option value="deny">Deny all</option>
+                <option value="allow_list">Allow listed tools</option>
+              </select>
+            </label>
+            <label>Allowed tools <input id="allowed-tools" name="allowed_tools" placeholder="filesystem.read, github.search" /></label>
+            <label>Denied tools <input id="denied-tools" name="denied_tools" placeholder="filesystem.delete" /></label>
+            <p class="section-label spaced">RUN LIMITS · 0 MEANS UNLIMITED</p>
+            <div class="quota-grid">
+              <label>Per hour <input id="quota-hour" type="number" min="0" value="0" /></label>
+              <label>Concurrent <input id="quota-concurrent" type="number" min="0" value="0" /></label>
+              <label>Per day <input id="quota-day" type="number" min="0" value="0" /></label>
+            </div>
+            <button class="mini-primary full" type="submit">Save safety policy</button>
+          </form>
+          <section class="connections-section">
+            <div class="panel-action-row"><p class="section-label">MCP CONNECTIONS</p><button class="mini-primary" id="new-plugin-button" type="button">+ Add</button></div>
+            <div class="management-list" id="plugin-list"><p class="activity-empty">Choose a bot to view connections.</p></div>
+          </section>
+          <section class="audit-section">
+            <p class="section-label">RECENT AUDIT</p>
+            <div class="management-list" id="audit-list"><p class="activity-empty">No decisions recorded.</p></div>
+          </section>
+        </div>
+      </aside>
+    </main>
+
+    <dialog class="create-dialog" id="create-dialog" aria-labelledby="create-title">
+      <form method="dialog" id="create-bot-form">
+        <div class="dialog-title-row">
+          <div><p class="eyebrow">NEW PERSISTENT AGENT</p><h2 id="create-title">Create a bot</h2></div>
+          <button class="icon-button" value="cancel" aria-label="Close">×</button>
+        </div>
+        <p class="dialog-copy">A bot keeps its Kiro session and conversation context between runs.</p>
+        <label>Name <input id="bot-name" name="name" autocomplete="off" required maxlength="60" placeholder="release-sherpa" /></label>
+        <label>Working directory <input id="bot-cwd" name="cwd" required placeholder="/Users/you/project" /></label>
+        <details>
+          <summary>Advanced options</summary>
+          <div class="advanced-fields">
+            <label>Agent mode <input id="bot-agent" name="agent" placeholder="Optional Kiro agent ID" /></label>
+            <label>Model <input id="bot-model" name="model" placeholder="Default Kiro model" /></label>
+            <label>Effort <input id="bot-effort" name="effort" placeholder="Optional effort setting" /></label>
+          </div>
+        </details>
+        <p class="form-error" id="create-error" role="alert"></p>
+        <div class="dialog-actions"><button value="cancel" type="button" id="cancel-create">Cancel</button><button class="send-button" type="submit">Create bot <span aria-hidden="true">→</span></button></div>
+      </form>
+    </dialog>
+    <dialog class="create-dialog" id="routine-dialog" aria-labelledby="routine-title">
+      <form method="dialog" id="routine-form">
+        <div class="dialog-title-row"><div><p class="eyebrow">AUTOMATION</p><h2 id="routine-title">Schedule a routine</h2></div><button class="icon-button" value="cancel" aria-label="Close">×</button></div>
+        <p class="dialog-copy">The selected bot will receive this prompt on the schedule you choose.</p>
+        <label>Name <input name="name" required maxlength="100" placeholder="Repository pulse" /></label>
+        <label>Prompt <textarea name="prompt" required rows="4" placeholder="Review open work and summarize blockers."></textarea></label>
+        <label>Schedule
+          <select name="trigger_kind" id="routine-kind"><option value="interval">Repeat</option><option value="once">Run once</option></select>
+        </label>
+        <label id="interval-field">Every minutes <input name="interval_minutes" type="number" min="1" value="60" /></label>
+        <label id="once-field" hidden>Run at <input name="run_at" type="datetime-local" /></label>
+        <p class="form-error" id="routine-error" role="alert"></p>
+        <div class="dialog-actions"><button type="button" data-close="routine-dialog">Cancel</button><button class="send-button" type="submit">Create routine <span aria-hidden="true">→</span></button></div>
+      </form>
+    </dialog>
+    <dialog class="create-dialog" id="plugin-dialog" aria-labelledby="plugin-title">
+      <form method="dialog" id="plugin-form">
+        <div class="dialog-title-row"><div><p class="eyebrow">CONNECTION</p><h2 id="plugin-title">Add an MCP server</h2></div><button class="icon-button" value="cancel" aria-label="Close">×</button></div>
+        <p class="dialog-copy">Connect a capability to this bot. Secret fields accept environment references only, such as API_TOKEN=env:MY_TOKEN.</p>
+        <label>Connection ID <input name="id" required maxlength="64" placeholder="github" /></label>
+        <label>Display name <input name="name" required maxlength="100" placeholder="GitHub" /></label>
+        <label>Transport <select name="transport" id="plugin-transport"><option value="stdio">Local command</option><option value="http">Secure URL</option></select></label>
+        <div id="stdio-fields"><label>Command <input name="command" placeholder="npx" /></label><label>Arguments <input name="args" placeholder="-y, @example/mcp" /></label><label>Environment references <textarea name="env" rows="3" placeholder="API_TOKEN=env:MY_API_TOKEN"></textarea></label></div>
+        <label id="http-field" hidden>HTTPS URL <input name="url" placeholder="https://mcp.example.com/mcp" /></label>
+        <p class="form-error" id="plugin-error" role="alert"></p>
+        <div class="dialog-actions"><button type="button" data-close="plugin-dialog">Cancel</button><button class="send-button" type="submit">Add connection <span aria-hidden="true">→</span></button></div>
+      </form>
+    </dialog>
+    <dialog class="create-dialog" id="channel-dialog" aria-labelledby="channel-title">
+      <form method="dialog" id="channel-form">
+        <div class="dialog-title-row"><div><p class="eyebrow">REMOTE ACCESS</p><h2 id="channel-title">Connect another place</h2></div><button class="icon-button" value="cancel" aria-label="Close">×</button></div>
+        <p class="dialog-copy">Signed events become durable bot requests with their source thread context. Secrets stay in environment variables.</p>
+        <label>Connection name <input name="name" required maxlength="100" placeholder="Engineering Slack" /></label>
+        <label>Connection ID <input name="id" required maxlength="80" placeholder="engineering-slack" /></label>
+        <label>Source
+          <select name="kind"><option value="slack">Slack</option><option value="github">GitHub</option><option value="whatsapp">WhatsApp</option><option value="email">Email gateway</option><option value="webhook">Signed webhook</option></select>
+        </label>
+        <label>Signing-secret environment variable <input name="signing_secret_env" required placeholder="KIRO_SLACK_SIGNING_SECRET" /></label>
+        <label>Verification-token environment variable <input name="verify_token_env" placeholder="Required for WhatsApp · KIRO_WHATSAPP_VERIFY_TOKEN" /></label>
+        <label>Reply-token environment variable <input name="outbound_token_env" placeholder="Optional · KIRO_SLACK_BOT_TOKEN" /></label>
+        <label>Invocation phrase <input name="trigger_prefix" value="@kiro" placeholder="@kiro" /></label>
+        <details>
+          <summary>Limit who can invoke it</summary>
+          <div class="advanced-fields">
+            <label>Allowed sources <input name="allowed_sources" placeholder="Channel IDs, repositories, or recipients" /></label>
+            <label>Allowed senders <input name="allowed_senders" placeholder="User IDs, GitHub logins, or email addresses" /></label>
+          </div>
+        </details>
+        <p class="form-error" id="channel-error" role="alert"></p>
+        <div class="dialog-actions"><button type="button" data-close="channel-dialog">Cancel</button><button class="send-button" type="submit">Create channel <span aria-hidden="true">→</span></button></div>
+      </form>
+    </dialog>
+    <dialog class="create-dialog" id="delegation-dialog" aria-labelledby="delegation-title">
+      <form method="dialog" id="delegation-form">
+        <div class="dialog-title-row"><div><p class="eyebrow">MULTI-BOT PLAN</p><h2 id="delegation-title">Send a team</h2></div><button class="icon-button" value="cancel" aria-label="Close">×</button></div>
+        <p class="dialog-copy">Give each bot one part of the goal. Independent tasks run in parallel and remain visible as one plan.</p>
+        <label>Plan name <input name="name" required maxlength="100" placeholder="Research launch risks" /></label>
+        <label>Bot tasks <textarea name="tasks" required rows="7" placeholder="researcher: Investigate the current design&#10;builder: Prototype the smallest solution&#10;reviewer: Identify security risks"></textarea></label>
+        <p class="dialog-copy">Use <strong>bot-name: instruction</strong>. Add <strong>&lt;- 1,2</strong> to wait for earlier task numbers.</p>
+        <p class="form-error" id="delegation-error" role="alert"></p>
+        <div class="dialog-actions"><button type="button" data-close="delegation-dialog">Cancel</button><button class="send-button" type="submit">Start team <span aria-hidden="true">→</span></button></div>
+      </form>
+    </dialog>
+    <dialog class="create-dialog" id="coding-dialog" aria-labelledby="coding-title">
+      <form method="dialog" id="coding-form">
+        <div class="dialog-title-row"><div><p class="eyebrow">ISOLATED CODING HARNESS</p><h2 id="coding-title">Build a verified patch</h2></div><button class="icon-button" value="cancel" aria-label="Close">×</button></div>
+        <p class="dialog-copy">The selected bot builds. Choose a different bot for independent review. Nothing is pushed or merged.</p>
+        <label>Repository <input name="repo_path" required placeholder="/Users/you/project" /></label>
+        <label>Reviewer bot <input name="reviewer_bot" required placeholder="reviewer" /></label>
+        <label>Task <textarea name="task" required rows="5" placeholder="Fix the issue, add tests, and explain the risk."></textarea></label>
+        <label>Checks <textarea name="checks" required rows="3" placeholder="tests: pytest, -q&#10;lint: ruff, check, ."></textarea></label>
+        <p class="dialog-copy">One check per line: <strong>name: executable, argument</strong>. Commands run directly without a shell.</p>
+        <label>Maximum repairs <input name="max_repairs" type="number" min="0" max="3" value="1" /></label>
+        <p class="form-error" id="coding-error" role="alert"></p>
+        <div class="dialog-actions"><button type="button" data-close="coding-dialog">Cancel</button><button class="send-button" type="submit">Start coding <span aria-hidden="true">→</span></button></div>
+      </form>
+    </dialog>
+    <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
