@@ -62,15 +62,17 @@ class FakeOrchestrator:
         return self.session
 
     async def run(self, message: str) -> AsyncIterator[Event]:
-        self.hub.starts.append((self.bot_name, message))
+        self.hub.execution_prompts.append((self.bot_name, message))
+        public_message = message.rsplit("Current request:\n", 1)[-1]
+        self.hub.starts.append((self.bot_name, public_message))
         self.hub.active += 1
         self.hub.max_active = max(self.hub.max_active, self.hub.active)
-        self.hub.started[(self.bot_name, message)].set()
+        self.hub.started[(self.bot_name, public_message)].set()
         try:
-            gate = self.hub.gates.get((self.bot_name, message))
+            gate = self.hub.gates.get((self.bot_name, public_message))
             if gate is not None:
                 await gate.wait()
-            if message == "permission":
+            if public_message == "permission":
                 yield Event(
                     kind="permission",
                     request_id="request-1",
@@ -79,7 +81,7 @@ class FakeOrchestrator:
                     options=[{"optionId": "allow_once"}],
                 )
                 await self.session.permission_decided.wait()
-            if message in {"policy-allow", "policy-deny"}:
+            if public_message in {"policy-allow", "policy-deny"}:
                 yield Event(
                     kind="permission",
                     request_id="request-policy",
@@ -89,7 +91,7 @@ class FakeOrchestrator:
                     options=[{"optionId": "allow_once"}, {"optionId": "reject"}],
                 )
                 await self.session.permission_decided.wait()
-            if message == "plugin-missing":
+            if public_message == "plugin-missing":
                 yield Event(
                     kind="permission",
                     request_id="request-plugin",
@@ -100,16 +102,16 @@ class FakeOrchestrator:
                     options=[{"optionId": "allow_once"}, {"optionId": "reject"}],
                 )
                 await self.session.permission_decided.wait()
-            if message == "hold":
+            if public_message == "hold":
                 await asyncio.Event().wait()
-            if message == "fail":
+            if public_message == "fail":
                 raise RuntimeError("simulated turn failure")
-            if message == "workspace-write":
+            if public_message == "workspace-write":
                 assert self.cwd is not None
                 Path(self.cwd, "artifact.txt").write_text(
                     "workspace result\n", encoding="utf-8"
                 )
-            yield Event(kind="text", text=f"{self.bot_name}:{message}")
+            yield Event(kind="text", text=f"{self.bot_name}:{public_message}")
             yield Event(kind="complete", stop_reason="end_turn")
         finally:
             self.hub.active -= 1
@@ -122,6 +124,7 @@ class FakeHub:
     def __init__(self) -> None:
         self.instances: dict[str, FakeOrchestrator] = {}
         self.starts: list[tuple[str, str]] = []
+        self.execution_prompts: list[tuple[str, str]] = []
         self.started: defaultdict[tuple[str, str], asyncio.Event] = defaultdict(asyncio.Event)
         self.gates: dict[tuple[str, str], asyncio.Event] = {}
         self.active = 0
@@ -212,12 +215,45 @@ def test_local_run_receives_cross_surface_memory_without_mutating_public_message
             run_id = await engine.submit("alpha", "Continue the local index work")
             snapshot = await _wait_for_status(engine, run_id, "complete")
             assert snapshot["message"] == "Continue the local index work"
-            executed = hub.starts[0][1]
+            executed = hub.execution_prompts[0][1]
+            assert "<kiro_bot_control_plane>" in executed
+            assert "durable dependency DAG" in executed
+            assert "Named bots currently visible to the host: alpha." in executed
             assert "We chose SQLite" in executed
             assert executed.endswith("Current request:\nContinue the local index work")
             local = memory.list_events("alpha", scope="local")
             assert len(local) == 1
             assert local[0].request_text == "Continue the local index work"
+        finally:
+            await engine.close()
+
+    asyncio.run(scenario())
+
+
+def test_every_run_receives_harness_capability_contract_without_public_mutation(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        store = Store(tmp_path / "state")
+        store.put_bot(Bot("alpha", str(tmp_path)))
+        store.put_bot(Bot("reviewer", str(tmp_path)))
+        hub = FakeHub()
+        engine = Engine(
+            store=store,
+            orchestrator_factory=hub.factory,
+            recover_on_start=False,
+        )
+        await engine.start()
+        try:
+            request = "Can you orchestrate multiple bots for me?"
+            run_id = await engine.submit("alpha", request)
+            snapshot = await _wait_for_status(engine, run_id, "complete")
+            assert snapshot["message"] == request
+            executed = hub.execution_prompts[0][1]
+            assert "durable named" in executed
+            assert "team-plan DAG" in executed
+            assert "alpha, reviewer" in executed
+            assert executed.endswith(f"Current request:\n{request}")
         finally:
             await engine.close()
 

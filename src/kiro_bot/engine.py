@@ -22,6 +22,7 @@ from .workspaces import (
     WorkspaceManager,
 )
 from .memory import SharedMemoryStore, local_scope
+from .harness_context import compose_execution_prompt
 
 try:
     from .governance import GovernanceStore, RunLease
@@ -464,23 +465,31 @@ class Engine:
         return bot.cwd
 
     async def _execution_prompt(self, run: _RunState) -> str:
-        """Add bounded evidence from other surfaces without mutating run.message."""
+        """Add host capabilities and bounded evidence without mutating run.message."""
         scope = local_scope(run.actor)
-        if self._memory is None or scope is None:
-            return run.message
-        try:
-            context = await asyncio.to_thread(
-                self._memory.render_context,
-                run.bot_name,
-                run.message,
-                exclude_scopes=(scope,),
-            )
-        except Exception:
-            _logger.exception("Shared-memory retrieval failed for run %s", run.id)
-            return run.message
-        if not context:
-            return run.message
-        return f"{context}\n\nCurrent request:\n{run.message}"
+        context = ""
+        if self._memory is not None and scope is not None:
+            try:
+                context = await asyncio.to_thread(
+                    self._memory.render_context,
+                    run.bot_name,
+                    run.message,
+                    exclude_scopes=(scope,),
+                )
+            except Exception:
+                _logger.exception("Shared-memory retrieval failed for run %s", run.id)
+        bot_names: tuple[str, ...] = ()
+        if self._store is not None:
+            try:
+                bots = await asyncio.to_thread(self._store.list_bots)
+                bot_names = tuple(bot.name for bot in bots)
+            except Exception:
+                _logger.exception("Bot inventory retrieval failed for run %s", run.id)
+        return compose_execution_prompt(
+            run.message,
+            bot_names=bot_names,
+            memory_context=context,
+        )
 
     async def _restore_all_queued(self) -> None:
         assert self._run_repository is not None
