@@ -1,5 +1,7 @@
 # Kiro Bot
 
+<img src="web-ui/public/brand-mark.svg" alt="Kiro Bot night ghost logo" width="88" />
+
 **Put Kiro to work beyond the terminal.**
 
 Kiro Bot is the local control plane for persistent Kiro agents, recurring work,

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { Channel, ChannelEvent, Surface } from "../types";
 import type { Theme } from "../lib/theme";
+import { KiroGlyph } from "./KiroGlyph";
 
 interface Props {
   bots: { name: string; cwd?: string; model?: string; agent?: string }[];
@@ -63,6 +64,7 @@ export function Sidebar({
     <aside className={`sidebar${open ? " is-open" : " collapsed"}`} aria-label="Bots and channels">
       <div className="sidebar-inner">
         <div className="sidebar-top">
+          <KiroGlyph className="sidebar-brand-mark" size={24} />
           <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--fg-muted)" }}>Kiro Bot</span>
         </div>
         <input
