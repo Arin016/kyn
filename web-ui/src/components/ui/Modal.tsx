@@ -9,9 +9,10 @@ interface ModalProps {
   onClose: () => void;
   children: ReactNode;
   wide?: boolean;
+  canvas?: boolean;
 }
 
-export function Modal({ eyebrow, title, open, onClose, children, wide = false }: ModalProps) {
+export function Modal({ eyebrow, title, open, onClose, children, wide = false, canvas = false }: ModalProps) {
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
@@ -33,7 +34,7 @@ export function Modal({ eyebrow, title, open, onClose, children, wide = false }:
       }}
     >
       <motion.div
-        className={`modal-dialog${wide ? " modal-dialog-wide" : ""}`}
+        className={`modal-dialog${wide ? " modal-dialog-wide" : ""}${canvas ? " modal-dialog-canvas" : ""}`}
         initial={{ opacity: 0, y: 18, scale: 0.97 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}

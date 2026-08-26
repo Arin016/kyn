@@ -81,7 +81,7 @@ const SUBSYSTEMS: { area: string; role: string; file: string }[] = [
   },
   {
     area: "Delegation",
-    role: "Multi-bot DAGs with bounded fan-out and depth. Conversational host tools and a drag-and-drop board compile to the same durable graph.",
+    role: "Multi-bot DAGs with bounded fan-out and depth. Conversational host tools and the visual node-and-arrow canvas compile to the same durable graph.",
     file: "delegation.py · control_mcp.py",
   },
   {

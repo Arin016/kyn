@@ -795,6 +795,18 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
             </span>
           </div>
           <div className="header-actions">
+            <button
+              type="button"
+              className="workflow-launch"
+              onClick={() => setDialog("delegation")}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+                <rect x="3" y="4" width="6" height="5" rx="1" />
+                <rect x="15" y="15" width="6" height="5" rx="1" />
+                <path d="M9 6.5h3a4 4 0 0 1 4 4V15M9 6.5l2-2m-2 2 2 2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              Workflows
+            </button>
             <span className="status-pill" data-state={phase}>
               <span className="status-dot" aria-hidden />
               {PHASE_TITLE[phase]}

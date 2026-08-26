@@ -43,8 +43,8 @@ const PERSONAS: Persona[] = [
     role: "The Coordinator",
     outcome: "Moves one outcome through several specialists.",
     body:
-      "Describe the outcome in chat or draw it on the workflow board. Independent agents move in parallel, dependent work waits for the right result, and one bot can call another for focused help.",
-    detail: "Conversational launch · drag-and-drop DAG · bot calls",
+      "Describe the outcome in chat or compose it on the visual canvas. Drag bot nodes, connect their ports with arrows, and let independent agents run in parallel while dependent work waits for the right result.",
+    detail: "Conversational launch · node-and-arrow DAG · bot calls",
   },
 ];
 
@@ -97,7 +97,7 @@ const FAQS = [
   {
     question: "Can one bot actually launch work on other bots?",
     answer:
-      "Yes. A governed built-in control tool can create, inspect, start, and cancel durable team workflows from the conversation. It can also call a different named bot for one focused result. The same plans are editable as a drag-and-drop board in the control room.",
+      "Yes. A governed built-in control tool can create, inspect, start, and cancel durable team workflows from the conversation. It can also call a different named bot for one focused result. The same graph can be composed visually in Workflow Studio with draggable bot nodes, ports, arrows, zoom, and automatic layout.",
   },
   {
     question: "Is Kiro Bot another coding model?",

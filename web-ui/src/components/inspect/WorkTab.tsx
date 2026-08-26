@@ -116,7 +116,7 @@ export function WorkTab({ routines, codingExecutions, delegations, channels, cha
         <div className="panel-action-row">
           <p>Coordinate several bots on one goal.</p>
           <button type="button" className="mini-primary" onClick={actions.onNewDelegation}>
-            Add
+            Open canvas
           </button>
         </div>
         <div className="management-list">

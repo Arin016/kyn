@@ -57,7 +57,8 @@ points, voice, and honest boundaries.
 - Coordinate durable multi-bot task graphs with bounded fan-out, dependency
   ordering, cancellation, and deterministic result aggregation.
 - Create, start, inspect and cancel those plans conversationally through the
-  built-in governed control MCP, or draw them as a drag-and-drop workflow board.
+  built-in governed control MCP, or compose them on a visual workflow canvas:
+  drag bot nodes, connect their ports with arrows, zoom, and auto-layout the DAG.
   A named bot can also call a different durable bot for one focused result.
 - Create detached per-run Git worktrees, retain material output, and record
   bounded SHA-256 artifact manifests without force-cleaning user work.
