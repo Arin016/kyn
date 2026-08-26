@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 
-_CAPABILITY_CONTRACT = """<kiro_bot_control_plane>
+_CAPABILITY_CONTRACT = """<kyn_control_plane>
 You are running inside KYN, a durable local control plane above Kiro ACP. Do not
 answer capability questions from generic Kiro or generic AI-assistant knowledge.
 
@@ -49,7 +49,7 @@ Ask only for genuinely missing objective/roles/constraints; otherwise create a c
 node-and-dependency plan with kiro-control. Never replace this answer with the narrower
 claim that you can only spawn temporary subagents. If a tool action asks permission,
 stop and let the host surface that exact human gate.
-</kiro_bot_control_plane>"""
+</kyn_control_plane>"""
 
 
 def render_harness_context(bot_names: Iterable[str] = ()) -> str:

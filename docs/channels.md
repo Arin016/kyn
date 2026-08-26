@@ -49,7 +49,7 @@ and select **Add**. For example:
 ```bash
 export KIRO_SLACK_SIGNING_SECRET='replace-with-your-signing-secret'
 export KIRO_SLACK_BOT_TOKEN='replace-with-your-bot-token'
-uv run kiro-bot serve
+uv run kyn serve
 ```
 
 Enter `KIRO_SLACK_SIGNING_SECRET` and `KIRO_SLACK_BOT_TOKEN` in the form—not the
@@ -64,7 +64,7 @@ https://your-host/hooks/webhook/<connection-id>
 ```
 
 Telegram has no `/hooks/telegram/...` URL. The daemon long-polls Telegram while
-`kiro-bot serve` is running.
+`kyn serve` is running.
 
 The server still binds to loopback by default. Put it behind an authenticated,
 TLS-terminating ingress before accepting internet traffic. Do not expose the
@@ -73,7 +73,7 @@ local daemon directly.
 For local testing, run the separate hooks-only relay in a second terminal:
 
 ```bash
-uv run kiro-bot serve-hooks
+uv run kyn serve-hooks
 ```
 
 It listens on `127.0.0.1:8766`, forwards only authenticated `/hooks/*` requests
@@ -109,7 +109,7 @@ On the laptop:
 
 ```bash
 export KIRO_TELEGRAM_BOT_TOKEN='123456789:replace-with-the-botfather-token'
-uv run kiro-bot serve
+uv run kyn serve
 ```
 
 Create a **Telegram** channel. Enter `KIRO_TELEGRAM_BOT_TOKEN` as the signing

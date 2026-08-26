@@ -1,5 +1,5 @@
 {
-  "name": "kiro-bot-ui",
+  "name": "kyn-ui",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -8,8 +8,8 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "video": "remotion studio video/index.ts",
-    "video:render": "remotion render video/index.ts ProductDemo out/kiro-bot-demo-remotion.mp4",
-    "video:still": "remotion still video/index.ts ProductDemo out/kiro-bot-demo-frame.png --frame=450",
+    "video:render": "remotion render video/index.ts ProductDemo out/kyn-demo-remotion.mp4",
+    "video:still": "remotion still video/index.ts ProductDemo out/kyn-demo-frame.png --frame=450",
     "demo:preview": "vite preview --port 4173",
     "demo:record": "node demo/record.mjs",
     "demo:film": "npm run build && npm run demo:record"

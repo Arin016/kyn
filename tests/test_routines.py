@@ -5,8 +5,8 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from kiro_bot.routines import RoutineStore, Scheduler
-from kiro_bot.store import Bot, Store
+from kyn.routines import RoutineStore, Scheduler
+from kyn.store import Bot, Store
 
 
 UTC = timezone.utc

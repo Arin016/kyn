@@ -6,11 +6,11 @@ from typing import Any, AsyncIterator
 
 import pytest
 
-from kiro_bot.orchestrator import BotOrchestrator
-from kiro_bot.plugins import PluginRegistry
-from kiro_bot.protocol import Event
-from kiro_bot.runtime import AcpError
-from kiro_bot.store import Bot, Store
+from kyn.orchestrator import BotOrchestrator
+from kyn.plugins import PluginRegistry
+from kyn.protocol import Event
+from kyn.runtime import AcpError
+from kyn.store import Bot, Store
 
 
 class FakeSession:
@@ -69,7 +69,7 @@ def test_next_turn_refreshes_session_after_plugin_binding_change(
 ) -> None:
     async def scenario() -> None:
         FakeRuntime.instances.clear()
-        monkeypatch.setattr("kiro_bot.orchestrator.AcpRuntime", FakeRuntime)
+        monkeypatch.setattr("kyn.orchestrator.AcpRuntime", FakeRuntime)
         store = Store(tmp_path / "store")
         store.put_bot(Bot(name="builder", cwd=str(tmp_path)))
         plugins = PluginRegistry(store)
@@ -102,7 +102,7 @@ def test_next_turn_refreshes_session_after_plugin_binding_change(
 def test_legacy_inline_mcp_configuration_is_rejected(tmp_path, monkeypatch) -> None:
     async def scenario() -> None:
         FakeRuntime.instances.clear()
-        monkeypatch.setattr("kiro_bot.orchestrator.AcpRuntime", FakeRuntime)
+        monkeypatch.setattr("kyn.orchestrator.AcpRuntime", FakeRuntime)
         store = Store(tmp_path / "store")
         store.put_bot(
             Bot(
@@ -132,7 +132,7 @@ def test_workspace_cwd_uses_fresh_isolated_session_without_rebinding_chat(
 ) -> None:
     async def scenario() -> None:
         FakeRuntime.instances.clear()
-        monkeypatch.setattr("kiro_bot.orchestrator.AcpRuntime", FakeRuntime)
+        monkeypatch.setattr("kyn.orchestrator.AcpRuntime", FakeRuntime)
         store = Store(tmp_path / "store")
         normal = tmp_path / "normal"
         isolated = tmp_path / "isolated"

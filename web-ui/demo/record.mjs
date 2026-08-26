@@ -2,7 +2,7 @@
  * Record the product demo in real Chrome (Playwright).
  * Uses per-frame screenshots + ffmpeg — reliable when video capture misses React paints.
  *
- * Output: web-ui/out/kiro-bot-demo.mp4
+ * Output: web-ui/out/kyn-demo.mp4
  */
 import { spawn } from "node:child_process";
 import { mkdir, rm } from "node:fs/promises";
@@ -20,7 +20,7 @@ const DURATION_SEC = Number(process.env.DEMO_SEC || 75);
 const FPS = Number(process.env.DEMO_FPS || 30);
 const totalFrames = DURATION_SEC * FPS;
 const frameMs = 1000 / FPS;
-const mp4Path = path.join(outDir, "kiro-bot-demo.mp4");
+const mp4Path = path.join(outDir, "kyn-demo.mp4");
 
 function run(cmd, args, opts = {}) {
   return new Promise((resolve, reject) => {

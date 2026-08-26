@@ -104,7 +104,7 @@ class AcpRuntime:
         result = await self.request(
             INITIALIZE,
             {
-                "clientInfo": {"name": "kiro-bot", "version": "0.1.0"},
+                "clientInfo": {"name": "kyn", "version": "0.1.0"},
                 "protocolVersion": PROTOCOL_VERSION,
                 "clientCapabilities": {
                     "fs": {"readTextFile": False, "writeTextFile": False},
@@ -334,7 +334,7 @@ class AcpRuntime:
 
     @staticmethod
     def _trace(direction: str, message: dict[str, Any]) -> None:
-        if os.environ.get("KIRO_BOT_TRACE") == "1":
+        if os.environ.get("KYN_TRACE") == "1":
             print(
                 f"ACP {direction} {json.dumps(_redact_trace(message), ensure_ascii=False)}",
                 file=sys.stderr,

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from kiro_bot.protocol import Event
-from kiro_bot.store import Bot, Store
+from kyn.protocol import Event
+from kyn.store import Bot, Store
 
 
 def test_bot_and_conversation_persistence(tmp_path) -> None:

@@ -6,8 +6,8 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from kiro_bot.governance import GovernanceStore, Policy, QuotaExceeded, RunLease
-from kiro_bot.store import Bot, Store
+from kyn.governance import GovernanceStore, Policy, QuotaExceeded, RunLease
+from kyn.store import Bot, Store
 
 
 def _governance(tmp_path, policy: Policy | None = None) -> GovernanceStore:
@@ -139,7 +139,7 @@ def test_audit_rejects_unbounded_or_free_form_reason(tmp_path) -> None:
 
 def test_startup_reconciliation_releases_terminal_and_missing_leases(tmp_path) -> None:
     governance = _governance(tmp_path, Policy(max_concurrent_runs=2))
-    from kiro_bot.run_store import RunRepository
+    from kyn.run_store import RunRepository
 
     repository = RunRepository(governance.store)
     repository.enqueue("terminal", "builder", "done")

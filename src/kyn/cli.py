@@ -13,7 +13,7 @@ from .store import Bot, Store
 
 
 def parser() -> argparse.ArgumentParser:
-    root = argparse.ArgumentParser(prog="kiro-bot", description="KYN — persistent local agents on Kiro")
+    root = argparse.ArgumentParser(prog="kyn", description="KYN — persistent local agents on Kiro")
     commands = root.add_subparsers(dest="command", required=True)
 
     bot = commands.add_parser("bot", help="manage named bots")
@@ -152,7 +152,7 @@ async def _render_engine_run(engine: Engine, run_id: str) -> None:
             stop_reason = str(event.get("stop_reason") or "")
             if stop_reason not in {"", "end_turn"}:
                 print(f"[stopped: {stop_reason}]")
-        elif os.environ.get("KIRO_BOT_DEBUG") == "1":
+        elif os.environ.get("KYN_DEBUG") == "1":
             print(f"\n[{kind}] {json.dumps(event, ensure_ascii=False)}")
     snapshot = await engine.get_run(run_id)
     if snapshot["status"] == "failed":
@@ -162,7 +162,7 @@ async def _render_engine_run(engine: Engine, run_id: str) -> None:
 def _serve(host: str, port: int) -> None:
     if not 1 <= port <= 65535:
         raise AcpError("port must be between 1 and 65535")
-    os.environ.setdefault("KIRO_BOT_CONTROL_URL", f"http://127.0.0.1:{port}")
+    os.environ.setdefault("KYN_CONTROL_URL", f"http://127.0.0.1:{port}")
     try:
         import uvicorn
 

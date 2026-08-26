@@ -14,8 +14,8 @@ import pytest
 fastapi = pytest.importorskip("fastapi")
 pytest.importorskip("starlette")
 
-from kiro_bot.server import create_app
-from kiro_bot.store import Bot, Store
+from kyn.server import create_app
+from kyn.store import Bot, Store
 
 
 @dataclass

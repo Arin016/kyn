@@ -4,8 +4,8 @@ import sqlite3
 
 import pytest
 
-from kiro_bot.memory import SharedMemoryStore
-from kiro_bot.store import Bot, Store
+from kyn.memory import SharedMemoryStore
+from kyn.store import Bot, Store
 
 
 def _memory(tmp_path, *, max_events: int = 5_000) -> SharedMemoryStore:

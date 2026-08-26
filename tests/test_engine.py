@@ -9,14 +9,14 @@ from typing import AsyncIterator
 
 import pytest
 
-from kiro_bot.engine import Engine
-from kiro_bot.governance import GovernanceStore, Policy, QuotaExceeded
-from kiro_bot.memory import SharedMemoryStore
-from kiro_bot.protocol import Event
-from kiro_bot.plugins import PluginRegistry
-from kiro_bot.run_store import RunRepository
-from kiro_bot.store import Bot, Store
-from kiro_bot.workspaces import WorkspaceExecutionSpec, WorkspaceManager
+from kyn.engine import Engine
+from kyn.governance import GovernanceStore, Policy, QuotaExceeded
+from kyn.memory import SharedMemoryStore
+from kyn.protocol import Event
+from kyn.plugins import PluginRegistry
+from kyn.run_store import RunRepository
+from kyn.store import Bot, Store
+from kyn.workspaces import WorkspaceExecutionSpec, WorkspaceManager
 
 
 async def _wait_for_status(engine: Engine, run_id: str, status: str) -> dict:
@@ -216,7 +216,7 @@ def test_local_run_receives_cross_surface_memory_without_mutating_public_message
             snapshot = await _wait_for_status(engine, run_id, "complete")
             assert snapshot["message"] == "Continue the local index work"
             executed = hub.execution_prompts[0][1]
-            assert "<kiro_bot_control_plane>" in executed
+            assert "<kyn_control_plane>" in executed
             assert "durable dependency DAG" in executed
             assert "Named bots currently visible to the host: alpha." in executed
             assert "We chose SQLite" in executed
@@ -680,7 +680,7 @@ def test_cancel_serializes_with_durable_claim(tmp_path) -> None:
 
 
 def test_durable_lease_is_renewed_while_turn_is_running(tmp_path, monkeypatch) -> None:
-    import kiro_bot.engine as engine_module
+    import kyn.engine as engine_module
 
     class WatchingRepository(RunRepository):
         def __init__(self, store: Store) -> None:

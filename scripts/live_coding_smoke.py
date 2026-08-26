@@ -9,15 +9,15 @@ import tempfile
 import time
 from pathlib import Path
 
-from kiro_bot.coding_lifecycle import (
+from kyn.coding_lifecycle import (
     CheckSpec,
     CodingExecutionSpec,
     CodingExecutionStore,
     CodingLifecycleController,
 )
-from kiro_bot.engine import Engine, InvalidRunOperation, RunNotFound
-from kiro_bot.store import Bot, Store
-from kiro_bot.workspaces import WorkspaceManager
+from kyn.engine import Engine, InvalidRunOperation, RunNotFound
+from kyn.store import Bot, Store
+from kyn.workspaces import WorkspaceManager
 
 
 def git(cwd: Path, *args: str) -> None:
@@ -28,13 +28,13 @@ def git(cwd: Path, *args: str) -> None:
 
 
 async def main() -> None:
-    with tempfile.TemporaryDirectory(prefix="kiro-bot-coding-live-") as root_text:
+    with tempfile.TemporaryDirectory(prefix="kyn-coding-live-") as root_text:
         root = Path(root_text)
         repo = root / "source"
         repo.mkdir()
         git(repo, "init")
         git(repo, "config", "user.name", "KYN Live")
-        git(repo, "config", "user.email", "kiro-bot@example.test")
+        git(repo, "config", "user.email", "kyn@example.test")
         (repo / "SMOKE.txt").write_text("before\n", encoding="utf-8")
         git(repo, "add", "SMOKE.txt")
         git(repo, "commit", "-m", "base")

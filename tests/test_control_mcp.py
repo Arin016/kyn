@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from kiro_bot.control_mcp import _dispatch, _validated_base_url
-from kiro_bot.internal_control import CONTROL_PLUGIN_ID, ensure_internal_control
-from kiro_bot.plugins import PluginRegistry
-from kiro_bot.store import Bot, Store
+from kyn.control_mcp import _dispatch, _validated_base_url
+from kyn.internal_control import CONTROL_PLUGIN_ID, ensure_internal_control
+from kyn.plugins import PluginRegistry
+from kyn.store import Bot, Store
 
 
 def test_control_mcp_advertises_durable_host_tools() -> None:
@@ -15,7 +15,7 @@ def test_control_mcp_advertises_durable_host_tools() -> None:
         "builder",
     )
     assert initialized is not None
-    assert initialized["result"]["serverInfo"]["name"] == "kiro-bot-control"
+    assert initialized["result"]["serverInfo"]["name"] == "kyn-control"
     listed = _dispatch(
         {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
         "http://127.0.0.1:8765",

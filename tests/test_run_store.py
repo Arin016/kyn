@@ -6,8 +6,8 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from kiro_bot.run_store import InvalidLease, RunConflict, RunRepository
-from kiro_bot.store import Bot, Store
+from kyn.run_store import InvalidLease, RunConflict, RunRepository
+from kyn.store import Bot, Store
 
 
 NOW = datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc)

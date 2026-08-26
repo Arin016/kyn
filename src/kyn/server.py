@@ -254,8 +254,8 @@ def create_app(
     if FastAPI is None:
         raise RuntimeError(
             "The daemon requires the optional server dependencies. "
-            "Install kiro-bot with its server extra (for example: "
-            "pip install 'kiro-bot[server]')."
+            "Install kyn with its server extra (for example: "
+            "pip install 'kyn[server]')."
         ) from _FASTAPI_IMPORT_ERROR
 
     active_store = store or Store()
@@ -410,7 +410,7 @@ def create_app(
             return
         task = asyncio.create_task(
             active_delegation_coordinator.run_until_terminal(plan_id),
-            name=f"kiro-bot-delegation:{plan_id}",
+            name=f"kyn-delegation:{plan_id}",
         )
         delegation_tasks[plan_id] = task
         task.add_done_callback(lambda finished, key=plan_id: delegation_done(finished, key))

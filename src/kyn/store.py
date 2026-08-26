@@ -11,7 +11,7 @@ from typing import Any, Iterator
 
 
 def default_home() -> Path:
-    return Path(os.environ.get("KIRO_BOT_HOME", "~/.kiro-bot")).expanduser()
+    return Path(os.environ.get("KYN_HOME", "~/.kyn")).expanduser()
 
 
 @dataclass(slots=True)
@@ -28,7 +28,7 @@ class Store:
     def __init__(self, home: str | Path | None = None) -> None:
         self.home = Path(home).expanduser() if home else default_home()
         self.home.mkdir(parents=True, exist_ok=True)
-        self.path = self.home / "kiro-bot.db"
+        self.path = self.home / "kyn.db"
         self._migrate()
 
     @contextmanager

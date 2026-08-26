@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from kiro_bot.harness_context import compose_execution_prompt, render_harness_context
+from kyn.harness_context import compose_execution_prompt, render_harness_context
 
 
 def test_capability_contract_distinguishes_durable_bots_from_subagents() -> None:
@@ -31,5 +31,5 @@ def test_execution_prompt_keeps_evidence_separate_from_current_request() -> None
         memory_context="<memory>Earlier decision</memory>",
     )
 
-    assert rendered.index("<kiro_bot_control_plane>") < rendered.index("<memory>")
+    assert rendered.index("<kyn_control_plane>") < rendered.index("<memory>")
     assert rendered.endswith("Current request:\nCan you orchestrate multiple bots?")

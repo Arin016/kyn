@@ -110,7 +110,7 @@ def parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     caller = parser().parse_args().caller.strip()
-    base_url = _validated_base_url(os.environ.get("KIRO_BOT_CONTROL_URL", "http://127.0.0.1:8765"))
+    base_url = _validated_base_url(os.environ.get("KYN_CONTROL_URL", "http://127.0.0.1:8765"))
     for line in sys.stdin:
         try:
             message = json.loads(line)
@@ -129,7 +129,7 @@ def _dispatch(message: Mapping[str, Any], base_url: str, caller: str) -> dict[st
     if method.startswith("notifications/"):
         return None
     if method == "initialize":
-        return _result(request_id, {"protocolVersion": PROTOCOL_VERSION, "capabilities": {"tools": {}}, "serverInfo": {"name": "kiro-bot-control", "version": "0.1.0"}})
+        return _result(request_id, {"protocolVersion": PROTOCOL_VERSION, "capabilities": {"tools": {}}, "serverInfo": {"name": "kyn-control", "version": "0.1.0"}})
     if method == "ping":
         return _result(request_id, {})
     if method == "tools/list":
@@ -195,7 +195,7 @@ def _http(base: str, method: str, path: str, payload: Any | None = None) -> Any:
 def _validated_base_url(value: str) -> str:
     parsed = urllib.parse.urlsplit(value)
     if parsed.scheme != "http" or not parsed.hostname or parsed.username or parsed.password or parsed.path not in {"", "/"}:
-        raise ValueError("KIRO_BOT_CONTROL_URL must be a loopback HTTP origin")
+        raise ValueError("KYN_CONTROL_URL must be a loopback HTTP origin")
     host = parsed.hostname.rstrip(".").casefold()
     if host != "localhost":
         try:

@@ -15,7 +15,7 @@ export function useTheme(): [Theme, () => void] {
       const next = current === "dark" ? "light" : "dark";
       document.documentElement.dataset.theme = next;
       try {
-        localStorage.setItem("kiro-theme", next);
+        localStorage.setItem("kyn-theme", next);
       } catch {
         /* storage unavailable */
       }

@@ -26,7 +26,7 @@ def ensure_internal_control(store: Store, plugins: PluginRegistry) -> None:
         name="KYN Control",
         transport="stdio",
         command=sys.executable,
-        args=("-m", "kiro_bot.control_mcp"),
+        args=("-m", "kyn.control_mcp"),
         enabled=True,
     )
     current = plugins.get_plugin(CONTROL_PLUGIN_ID)

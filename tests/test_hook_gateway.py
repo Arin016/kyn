@@ -10,7 +10,7 @@ pytest.importorskip("starlette")
 
 from fastapi.testclient import TestClient
 
-from kiro_bot.hook_gateway import create_hook_gateway
+from kyn.hook_gateway import create_hook_gateway
 
 
 def test_gateway_exposes_only_hooks_and_forwards_signature_contract() -> None:

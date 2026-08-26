@@ -135,7 +135,7 @@ wheels = [
 ]
 
 [[package]]
-name = "kiro-bot"
+name = "kyn"
 version = "0.1.0"
 source = { editable = "." }
 

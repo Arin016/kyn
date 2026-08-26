@@ -1,5 +1,5 @@
 ---
-name: kiro-ui
+name: kyn-ui
 description: Build or refine KYN interfaces using kiro.dev as a measured visual reference. Use for frontend implementation, redesigns, responsive QA, interaction polish, or visual regression work in this repository.
 ---
 

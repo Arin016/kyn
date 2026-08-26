@@ -1,0 +1,4 @@
+interface:
+  display_name: "KYN UI"
+  short_description: "Build and visually verify KYN interfaces"
+  default_prompt: "Use $kyn-ui to inspect the live Kiro reference, implement this interface, and visually verify it."

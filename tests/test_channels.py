@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from kiro_bot.channels import (
+from kyn.channels import (
     ChannelAuthenticationError,
     ChannelAuthorizationError,
     ChannelGateway,
@@ -28,8 +28,8 @@ from kiro_bot.channels import (
     verify_slack,
     whatsapp_events,
 )
-from kiro_bot.memory import SharedMemoryStore
-from kiro_bot.store import Bot, Store
+from kyn.memory import SharedMemoryStore
+from kyn.store import Bot, Store
 
 
 def _channels(tmp_path: Path) -> tuple[Store, ChannelStore]:
@@ -232,7 +232,7 @@ def test_whatsapp_binding_normalization_and_delivery(
 
     monkeypatch.setenv("KIRO_WA_ACCESS", "access-token")
     monkeypatch.setenv("KIRO_META_GRAPH_API_VERSION", "v25.0")
-    monkeypatch.setattr("kiro_bot.channels._post_json", fake_post)
+    monkeypatch.setattr("kyn.channels._post_json", fake_post)
     asyncio.run(ProviderReplyDeliverer().deliver(binding, event, "answer"))
     assert calls[0][0] == "https://graph.facebook.com/v25.0/123456/messages"
     assert calls[0][1]["to"] == "919999999999"
@@ -275,7 +275,7 @@ def test_telegram_requires_sender_allow_list_and_delivers_to_official_api(
         return True
 
     monkeypatch.setenv("KIRO_TG_TOKEN", "123456789:AAExampleTokenValueHere12345")
-    monkeypatch.setattr("kiro_bot.channels._telegram_call", fake_call)
+    monkeypatch.setattr("kyn.channels._telegram_call", fake_call)
     asyncio.run(ProviderReplyDeliverer().deliver(binding, event, "done"))
     assert calls[0][1] == "sendMessage"
     assert calls[0][2]["chat_id"] == 111
@@ -317,7 +317,7 @@ def test_telegram_permission_is_a_single_use_inline_decision(
             return True
 
         monkeypatch.setenv("KIRO_TG_TOKEN", "123456789:AAExampleTokenValueHere12345")
-        monkeypatch.setattr("kiro_bot.channels._telegram_call", fake_call)
+        monkeypatch.setattr("kyn.channels._telegram_call", fake_call)
         interaction_id = "a" * 32
         await ProviderReplyDeliverer().deliver_interaction(
             binding,
@@ -392,7 +392,7 @@ def test_telegram_poller_ingests_allowed_private_messages(
                 return batch
             return True
 
-        monkeypatch.setattr("kiro_bot.channels._telegram_call", fake_call)
+        monkeypatch.setattr("kyn.channels._telegram_call", fake_call)
         prompts: list[str] = []
 
         async def submit(_bot: str, prompt: str, actor: str) -> str:

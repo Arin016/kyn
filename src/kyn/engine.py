@@ -163,7 +163,7 @@ class BotWorker:
     def start(self) -> None:
         if self._loop_task is None:
             self._loop_task = asyncio.create_task(
-                self._run_loop(), name=f"kiro-bot-worker:{self.bot_name}"
+                self._run_loop(), name=f"kyn-worker:{self.bot_name}"
             )
 
     async def submit(self, run: _RunState) -> None:
@@ -229,7 +229,7 @@ class BotWorker:
                         continue
                     self._active_run_id = run.id
                     self._active_task = asyncio.create_task(
-                        self._execute(run), name=f"kiro-bot-run:{run.id}"
+                        self._execute(run), name=f"kyn-run:{run.id}"
                     )
                     try:
                         await self._active_task
@@ -260,7 +260,7 @@ class BotWorker:
             if run.durable_lease is not None:
                 heartbeat = asyncio.create_task(
                     self.engine._heartbeat_lease(run, asyncio.current_task()),
-                    name=f"kiro-bot-heartbeat:{run.id}",
+                    name=f"kyn-heartbeat:{run.id}",
                 )
             if run.workspace_execution is not None:
                 workspace_guard_id = run.workspace_execution.lease.run_id
@@ -272,7 +272,7 @@ class BotWorker:
             if run.workspace_execution is not None:
                 workspace_heartbeat = asyncio.create_task(
                     self.engine._heartbeat_workspace(run, asyncio.current_task()),
-                    name=f"kiro-bot-workspace-heartbeat:{run.id}",
+                    name=f"kyn-workspace-heartbeat:{run.id}",
                 )
             orchestrator = await self._ensure_orchestrator(execution_cwd)
             execution_prompt = await self.engine._execution_prompt(run)

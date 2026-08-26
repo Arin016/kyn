@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "kiro-bot"
+name = "kyn"
 version = "0.1.0"
 description = "KYN — persistent local agents and orchestration on Kiro ACP"
 readme = "README.md"
@@ -24,13 +24,13 @@ dev = [
 ]
 
 [project.scripts]
-kiro-bot = "kiro_bot.cli:main"
+kyn = "kyn.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/kiro_bot"]
+packages = ["src/kyn"]
 
 [tool.hatch.build.targets.wheel.force-include]
-"web" = "kiro_bot/web"
+"web" = "kyn/web"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

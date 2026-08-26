@@ -4,12 +4,12 @@ import json
 
 import pytest
 
-from kiro_bot.plugins import (
+from kyn.plugins import (
     PluginRegistry,
     PluginRegistryError,
     SecretResolutionError,
 )
-from kiro_bot.store import Bot, Store
+from kyn.store import Bot, Store
 
 
 def registry(tmp_path) -> PluginRegistry:

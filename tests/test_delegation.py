@@ -6,14 +6,14 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from kiro_bot.delegation import (
+from kyn.delegation import (
     DelegationCoordinator,
     DelegationStore,
     EdgeSpec,
     InvalidGraph,
     NodeSpec,
 )
-from kiro_bot.store import Bot, Store
+from kyn.store import Bot, Store
 
 
 UTC = timezone.utc

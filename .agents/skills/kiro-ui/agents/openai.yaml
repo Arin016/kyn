@@ -1,4 +1,0 @@
-interface:
-  display_name: "Kiro UI"
-  short_description: "Build and visually verify Kiro-inspired interfaces"
-  default_prompt: "Use $kiro-ui to inspect the live Kiro reference, implement this interface, and visually verify it."

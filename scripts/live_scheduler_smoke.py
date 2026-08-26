@@ -7,14 +7,14 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from kiro_bot.engine import Engine
-from kiro_bot.governance import GovernanceStore
-from kiro_bot.routines import RoutineStore, Scheduler
-from kiro_bot.store import Bot, Store
+from kyn.engine import Engine
+from kyn.governance import GovernanceStore
+from kyn.routines import RoutineStore, Scheduler
+from kyn.store import Bot, Store
 
 
 async def main() -> None:
-    with tempfile.TemporaryDirectory(prefix="kiro-bot-live-") as home:
+    with tempfile.TemporaryDirectory(prefix="kyn-live-") as home:
         store = Store(home)
         store.put_bot(Bot(name="scheduled-smoke", cwd=str(Path.cwd())))
         governance = GovernanceStore(store)

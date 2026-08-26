@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from kiro_bot.coding_workflow import (
+from kyn.coding_workflow import (
     CancellationToken,
     CodingWorkflow,
     CodingWorkflowCallbacks,

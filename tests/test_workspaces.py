@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from kiro_bot.store import Store
-from kiro_bot.workspaces import (
+from kyn.store import Store
+from kyn.workspaces import (
     ArtifactError,
     ArtifactLimitExceeded,
     InvalidWorkspaceLease,

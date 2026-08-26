@@ -183,7 +183,7 @@ function LifecycleStep({ step, index }: { step: Step; index: number }) {
           <h3 className="ed-h3">{step.title}</h3>
           {step.mark && <span className="ed-step-mark" aria-hidden>◆</span>}
         </div>
-        <span className="ed-step-cite">src/kiro_bot/{step.cite}</span>
+        <span className="ed-step-cite">src/kyn/{step.cite}</span>
         <p className="ed-body">{step.body}</p>
       </div>
     </motion.div>
@@ -412,8 +412,8 @@ export default function EngineeringPage({ onEnterConsole, onBackToLanding }: Pro
               <h2 className="ed-h2">The features are durable because the state is.</h2>
               <p className="ed-body ed-body-lead">
                 Every product promise maps to a small subsystem under{" "}
-                <code className="ed-inline-code">src/kiro_bot/</code>. Everything durable lives in a
-                local SQLite database under <code className="ed-inline-code">~/.kiro-bot/</code>,
+                <code className="ed-inline-code">src/kyn/</code>. Everything durable lives in a
+                local SQLite database under <code className="ed-inline-code">~/.kyn/</code>,
                 while secrets remain environment references resolved only when a session starts.
               </p>
             </Reveal>
@@ -424,7 +424,7 @@ export default function EngineeringPage({ onEnterConsole, onBackToLanding }: Pro
                   <div key={subsystem.area} className="ed-map-row">
                     <div className="ed-map-area">
                       <span className="ed-map-title">{subsystem.area}</span>
-                      <span className="ed-map-file">src/kiro_bot/{subsystem.file}</span>
+                      <span className="ed-map-file">src/kyn/{subsystem.file}</span>
                     </div>
                     <p className="ed-map-role">{subsystem.role}</p>
                   </div>
@@ -505,7 +505,7 @@ export default function EngineeringPage({ onEnterConsole, onBackToLanding }: Pro
               <p className="ed-eyebrow">Runtime</p>
               <ul>
                 <li>Loopback binding by default</li>
-                <li>SQLite under ~/.kiro-bot/</li>
+                <li>SQLite under ~/.kyn/</li>
                 <li>One controller per data dir</li>
                 <li>Telegram polled, not webhooked</li>
               </ul>

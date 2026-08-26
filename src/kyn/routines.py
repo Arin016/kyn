@@ -476,7 +476,7 @@ class Scheduler:
             raise RuntimeError("scheduler is closed")
         if self._task is None:
             self._task = asyncio.create_task(
-                self._run_loop(), name=f"kiro-bot-scheduler:{self.owner}"
+                self._run_loop(), name=f"kyn-scheduler:{self.owner}"
             )
 
     async def close(self) -> None:

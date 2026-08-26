@@ -1216,7 +1216,7 @@ def _post_json(url: str, payload: Mapping[str, Any], headers: Mapping[str, str],
     body = json.dumps(payload).encode()
     request = urllib.request.Request(
         url, data=body, method="POST",
-        headers={"Content-Type": "application/json", "User-Agent": "kiro-bot/0.1", **headers},
+        headers={"Content-Type": "application/json", "User-Agent": "kyn/0.1", **headers},
     )
     try:
         with urllib.request.urlopen(request, timeout=15) as response:  # noqa: S310 - fixed provider URLs
@@ -1256,7 +1256,7 @@ def _telegram_call(token: str, method: str, payload: Mapping[str, Any] | None = 
     if parsed.scheme != "https" or (parsed.hostname or "").casefold() != _TELEGRAM_HOST:
         raise ChannelError("Telegram API host is not allowed")
     body = None if payload is None else json.dumps(dict(payload)).encode()
-    headers = {"User-Agent": "kiro-bot/0.1", "Accept": "application/json"}
+    headers = {"User-Agent": "kyn/0.1", "Accept": "application/json"}
     request = urllib.request.Request(url, data=body, method="POST", headers=headers)
     if body is not None:
         request.add_header("Content-Type", "application/json")

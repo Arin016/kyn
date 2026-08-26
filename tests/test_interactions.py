@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from kiro_bot.interactions import InteractionConflict, InteractionStore
-from kiro_bot.store import Store
+from kyn.interactions import InteractionConflict, InteractionStore
+from kyn.store import Store
 
 
 def test_interactions_are_durable_idempotent_and_single_decision(tmp_path: Path) -> None:

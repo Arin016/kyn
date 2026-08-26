@@ -32,7 +32,7 @@ export interface ConsoleSnapshot {
 const BOTS = [
   { name: "builder", cwd: "/Users/arin.mallanna/personal", model: "Kiro" },
   { name: "reviewer", cwd: "/Users/arin.mallanna/personal", model: "Kiro" },
-  { name: "triage", cwd: "/Users/arin.mallanna/personal/kiro-bot", agent: "triage" },
+  { name: "triage", cwd: "/Users/arin.mallanna/personal/kyn", agent: "triage" },
 ];
 
 const PHASE_TITLE: Record<RunPhase, string> = {

@@ -8,15 +8,15 @@ from typing import AsyncIterator
 
 import pytest
 
-from kiro_bot.coding_lifecycle import (
+from kyn.coding_lifecycle import (
     CheckSpec,
     CodingExecutionConflict,
     CodingExecutionSpec,
     CodingExecutionStore,
     CodingLifecycleController,
 )
-from kiro_bot.store import Bot, Store
-from kiro_bot.workspaces import WorkspaceExecutionSpec, WorkspaceManager
+from kyn.store import Bot, Store
+from kyn.workspaces import WorkspaceExecutionSpec, WorkspaceManager
 
 
 def git(cwd: Path, *args: str) -> str:

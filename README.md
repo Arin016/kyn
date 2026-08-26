@@ -9,7 +9,7 @@ and governed coding handoffs. Create named agents with clear jobs, reach them
 from your browser or phone, run several at once, and keep consequential actions
 behind deterministic boundaries.
 
-![KYN control room](docs/screenshots/kiro-bot-home-desktop.png)
+![KYN control room](docs/screenshots/kyn-home-desktop.png)
 
 Kiro remains the agentic engine that reasons, writes code, and uses tools. KYN
 launches `kiro-cli acp` and owns the durable product layer around it:
@@ -81,16 +81,16 @@ points, voice, and honest boundaries.
 ## Quick start
 
 ```bash
-cd /Users/arin.mallanna/personal/kiro-bot
+cd /Users/arin.mallanna/personal/kyn
 uv sync --extra server --extra dev
-uv run kiro-bot bot create builder --cwd /Users/arin.mallanna/personal
-uv run kiro-bot chat builder
+uv run kyn bot create builder --cwd /Users/arin.mallanna/personal
+uv run kyn chat builder
 ```
 
 For a one-shot task:
 
 ```bash
-uv run kiro-bot ask builder "Inspect this repository and summarize it."
+uv run kyn ask builder "Inspect this repository and summarize it."
 ```
 
 For the browser control room:
@@ -98,7 +98,7 @@ For the browser control room:
 ```bash
 npm --prefix web-ui install
 npm --prefix web-ui run build
-uv run kiro-bot serve
+uv run kyn serve
 ```
 
 Then open `http://127.0.0.1:8765/`. The server binds to loopback by default;
@@ -116,7 +116,7 @@ state, cursor interactions, and camera moves.
 ```bash
 npm --prefix web-ui install
 npm --prefix web-ui run video          # Remotion Studio preview
-npm --prefix web-ui run video:render   # writes web-ui/out/kiro-bot-demo.mp4
+npm --prefix web-ui run video:render   # writes web-ui/out/kyn-demo.mp4
 ```
 
 The **Coding** panel starts and monitors verified patch executions. Select the
@@ -151,8 +151,8 @@ Run the complete test suite with:
 uv run pytest -q
 ```
 
-Data is stored under `~/.kiro-bot/` by default. Override it with
-`KIRO_BOT_HOME=/some/path`.
+Data is stored under `~/.kyn/` by default. Override it with
+`KYN_HOME=/some/path`.
 
 ## Architecture
 
@@ -207,7 +207,7 @@ the final human handoff.
 
 Only one controller may use a data directory at a time. If the daemon is
 running, send work through its browser/API rather than starting a second CLI
-controller against the same `KIRO_BOT_HOME`.
+controller against the same `KYN_HOME`.
 
 ## Independence
 

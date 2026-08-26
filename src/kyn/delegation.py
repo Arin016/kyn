@@ -856,7 +856,7 @@ class DelegationCoordinator:
                     break
                 task = asyncio.create_task(
                     self._execute_with_capacity(claimed[0]),
-                    name=f"kiro-bot-delegated-node:{claimed[0].plan_id}:{claimed[0].id}",
+                    name=f"kyn-delegated-node:{claimed[0].plan_id}:{claimed[0].id}",
                 )
                 self._active.add(task)
                 task.add_done_callback(self._active.discard)
@@ -914,7 +914,7 @@ class DelegationCoordinator:
                 # previously forgotten and then submitted twice after restart.
                 submit_task = asyncio.create_task(
                     self.submit(node.bot_name, node.prompt),
-                    name=f"kiro-bot-delegated-submit:{node.plan_id}:{node.id}",
+                    name=f"kyn-delegated-submit:{node.plan_id}:{node.id}",
                 )
                 try:
                     run_id = await asyncio.shield(submit_task)
@@ -991,7 +991,7 @@ class DelegationCoordinator:
     ) -> Mapping[str, Any]:
         wait_task = asyncio.create_task(
             self.wait(run_id),
-            name=f"kiro-bot-delegated-wait:{node.plan_id}:{node.id}",
+            name=f"kyn-delegated-wait:{node.plan_id}:{node.id}",
         )
         heartbeat = max(min(self.lease_seconds / 3, 30), 0.05)
         try:

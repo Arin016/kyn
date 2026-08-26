@@ -4,7 +4,7 @@ import asyncio
 import sys
 from pathlib import Path
 
-from kiro_bot.runtime import AcpRuntime
+from kyn.runtime import AcpRuntime
 
 
 def test_prompt_stream_and_demux(tmp_path: Path) -> None:
@@ -52,7 +52,7 @@ def test_permission_round_trip(tmp_path: Path) -> None:
 
 
 def test_acp_trace_recursively_redacts_launch_secrets(monkeypatch, capsys) -> None:
-    monkeypatch.setenv("KIRO_BOT_TRACE", "1")
+    monkeypatch.setenv("KYN_TRACE", "1")
     AcpRuntime._trace(
         "->",
         {

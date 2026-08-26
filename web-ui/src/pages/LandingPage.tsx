@@ -117,7 +117,7 @@ const FAQS = [
   {
     question: "Where does my data live?",
     answer:
-      "Bot state is stored locally in SQLite under ~/.kiro-bot by default. Secrets remain environment-variable references, and the audit ledger records decisions without storing raw tool payloads.",
+      "Bot state is stored locally in SQLite under ~/.kyn by default. Secrets remain environment-variable references, and the audit ledger records decisions without storing raw tool payloads.",
   },
 ];
 
@@ -377,8 +377,8 @@ export default function LandingPage({ onEnterConsole, onOpenEngineering }: Props
                 <pre>
                   <code>
 {`$ `}<span className="cmd">uv sync</span>{` --extra server --extra dev
-$ `}<span className="cmd">uv run kiro-bot bot create</span>{` builder --cwd `}<span className="path">~/your-project</span>{`
-$ `}<span className="cmd">uv run kiro-bot serve</span>{`   `}<span className="cmt">{`# http://127.0.0.1:8765`}</span>
+$ `}<span className="cmd">uv run kyn bot create</span>{` builder --cwd `}<span className="path">~/your-project</span>{`
+$ `}<span className="cmd">uv run kyn serve</span>{`   `}<span className="cmt">{`# http://127.0.0.1:8765`}</span>
                   </code>
                 </pre>
               </div>
@@ -477,7 +477,7 @@ $ `}<span className="cmd">uv run kiro-bot serve</span>{`   `}<span className="cm
               <p className="ed-eyebrow">Runtime</p>
               <ul>
                 <li>Loopback binding by default</li>
-                <li>SQLite under ~/.kiro-bot/</li>
+                <li>SQLite under ~/.kyn/</li>
                 <li>One controller per data dir</li>
                 <li>Telegram polled, not webhooked</li>
               </ul>
