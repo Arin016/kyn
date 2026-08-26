@@ -412,11 +412,20 @@ class ChannelStore:
 
 Submit = Callable[[str, str, str], Awaitable[Any]]
 Wait = Callable[[str], Awaitable[Mapping[str, Any]]]
+ListInteractions = Callable[[str], Awaitable[Sequence[Mapping[str, Any]]]]
+DecideInteraction = Callable[[str, str, str, ChannelBinding], Awaitable[Any]]
 
 
 class ReplyDeliverer(Protocol):
     async def deliver(
         self, binding: ChannelBinding, event: ChannelEvent, response_text: str
+    ) -> str: ...
+
+    async def deliver_interaction(
+        self,
+        binding: ChannelBinding,
+        event: ChannelEvent,
+        interaction: Mapping[str, Any],
     ) -> str: ...
 
 
@@ -501,6 +510,46 @@ class ProviderReplyDeliverer:
             return "delivered"
         return "stored"
 
+    async def deliver_interaction(
+        self,
+        binding: ChannelBinding,
+        event: ChannelEvent,
+        interaction: Mapping[str, Any],
+    ) -> str:
+        """Deliver a bounded human gate without granting standing trust."""
+        if binding.kind != "telegram":
+            return "stored"
+        interaction_id = str(interaction.get("id") or "")
+        if not re.fullmatch(r"[a-f0-9]{32}", interaction_id):
+            raise ChannelError("interaction id is invalid")
+        token = _telegram_binding_token(binding)
+        chat_id = event.context.get("chat_id", event.source)
+        if chat_id in (None, ""):
+            raise ChannelError("Telegram interaction target is incomplete")
+        title = str(interaction.get("title") or "Tool permission requested")[:700]
+        tool_name = str(interaction.get("tool_name") or "tool")[:160]
+        payload: dict[str, Any] = {
+            "chat_id": chat_id,
+            "text": f"Kiro needs your decision\n\n{title}\n\nTool: {tool_name}",
+            "reply_markup": {
+                "inline_keyboard": [[
+                    {
+                        "text": "Allow once",
+                        "callback_data": f"kiro:i:{interaction_id}:once",
+                    },
+                    {
+                        "text": "Deny",
+                        "callback_data": f"kiro:i:{interaction_id}:reject",
+                    },
+                ]]
+            },
+        }
+        message_id = event.context.get("message_id")
+        if isinstance(message_id, int):
+            payload["reply_to_message_id"] = message_id
+        await asyncio.to_thread(_telegram_call, token, "sendMessage", payload)
+        return "delivered"
+
 
 class ChannelGateway:
     def __init__(
@@ -512,6 +561,8 @@ class ChannelGateway:
         deliverer: ReplyDeliverer | None = None,
         memory: SharedMemoryStore | None = None,
         live: LiveBus | None = None,
+        list_interactions: ListInteractions | None = None,
+        decide_interaction: DecideInteraction | None = None,
         context_messages: int = 12,
         context_chars: int = 24_000,
         memory_chars: int = 6_000,
@@ -522,12 +573,16 @@ class ChannelGateway:
         self.deliverer = deliverer or ProviderReplyDeliverer()
         self.memory = memory
         self.live = live
+        self.list_interactions = list_interactions
+        self.decide_interaction = decide_interaction
         self.context_messages = min(max(int(context_messages), 0), 50)
         self.context_chars = min(max(int(context_chars), 1000), 100_000)
         self.memory_chars = min(max(int(memory_chars), 500), 30_000)
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._started = False
-        self._telegram = TelegramPoller(self.channels, self.ingest)
+        self._telegram = TelegramPoller(
+            self.channels, self.ingest, decide_interaction=self.decide_interaction
+        )
 
     async def start(self) -> None:
         if self._started:
@@ -613,7 +668,21 @@ class ChannelGateway:
                     raise ChannelError("engine returned no run identifier")
                 event = await asyncio.to_thread(self.channels.attach_run, event.id, run_id)
                 self._publish(binding, event)
-            terminal = await self.wait(run_id)
+            terminal_task = asyncio.create_task(
+                self.wait(run_id), name=f"kiro-channel-wait:{event.id}"
+            )
+            interaction_task: asyncio.Task[None] | None = None
+            if self.list_interactions is not None:
+                interaction_task = asyncio.create_task(
+                    self._relay_interactions(binding, event, run_id, terminal_task),
+                    name=f"kiro-channel-interactions:{event.id}",
+                )
+            try:
+                terminal = await terminal_task
+            finally:
+                if interaction_task is not None:
+                    interaction_task.cancel()
+                    await asyncio.gather(interaction_task, return_exceptions=True)
             run_status = str(terminal.get("status", ""))
             if run_status != "complete":
                 raise ChannelError(f"bot run ended as {run_status or 'unknown'}")
@@ -639,6 +708,27 @@ class ChannelGateway:
                 self._publish(binding, failed)
             except Exception:
                 pass
+
+    async def _relay_interactions(
+        self,
+        binding: ChannelBinding,
+        event: ChannelEvent,
+        run_id: str,
+        terminal_task: asyncio.Task[Mapping[str, Any]],
+    ) -> None:
+        assert self.list_interactions is not None
+        delivered: set[str] = set()
+        while not terminal_task.done():
+            items = await self.list_interactions(run_id)
+            for interaction in items:
+                interaction_id = str(interaction.get("id") or "")
+                if not interaction_id or interaction_id in delivered:
+                    continue
+                deliver = getattr(self.deliverer, "deliver_interaction", None)
+                if deliver is not None:
+                    await deliver(binding, event, interaction)
+                delivered.add(interaction_id)
+            await asyncio.sleep(0.35)
 
     async def _shared_context(
         self, binding: ChannelBinding, event: ChannelEvent
@@ -897,9 +987,16 @@ def telegram_event(update: Mapping[str, Any], binding: ChannelBinding) -> Incomi
 class TelegramPoller:
     """Long-poll Telegram so a laptop daemon needs no public webhook."""
 
-    def __init__(self, channels: ChannelStore, ingest: Callable[..., Awaitable[Any]]) -> None:
+    def __init__(
+        self,
+        channels: ChannelStore,
+        ingest: Callable[..., Awaitable[Any]],
+        *,
+        decide_interaction: DecideInteraction | None = None,
+    ) -> None:
         self.channels = channels
         self.ingest = ingest
+        self.decide_interaction = decide_interaction
         self._task: asyncio.Task[None] | None = None
         self._started = False
         self._offsets: dict[str, int] = {}
@@ -958,7 +1055,7 @@ class TelegramPoller:
                 {
                     "offset": offset,
                     "timeout": 25,
-                    "allowed_updates": ["message"],
+                    "allowed_updates": ["message", "callback_query"],
                 },
             )
         except ChannelError:
@@ -973,6 +1070,10 @@ class TelegramPoller:
             update_id = update.get("update_id")
             if isinstance(update_id, int):
                 highest = max(highest, update_id + 1)
+            callback = update.get("callback_query")
+            if isinstance(callback, Mapping):
+                await self._handle_callback(binding, token, callback)
+                continue
             incoming = telegram_event(update, binding)
             if incoming is None:
                 continue
@@ -981,6 +1082,55 @@ class TelegramPoller:
             except (ChannelAuthorizationError, ChannelError):
                 continue
         self._offsets[binding.id] = highest
+
+    async def _handle_callback(
+        self,
+        binding: ChannelBinding,
+        token: str,
+        callback: Mapping[str, Any],
+    ) -> None:
+        callback_id = str(callback.get("id") or "")
+        match = re.fullmatch(
+            r"kiro:i:([a-f0-9]{32}):(once|reject)",
+            str(callback.get("data") or ""),
+        )
+        sender_obj = callback.get("from") if isinstance(callback.get("from"), Mapping) else {}
+        message = callback.get("message") if isinstance(callback.get("message"), Mapping) else {}
+        chat = message.get("chat") if isinstance(message.get("chat"), Mapping) else {}
+        sender = str(sender_obj.get("id") or "")
+        source = str(chat.get("id") or "")
+        allowed = bool(match and sender and source and self.decide_interaction is not None)
+        if binding.allowed_senders and sender not in binding.allowed_senders:
+            allowed = False
+        if binding.allowed_sources and source not in binding.allowed_sources:
+            allowed = False
+        text = "This action is no longer available."
+        if allowed and match is not None and self.decide_interaction is not None:
+            try:
+                await self.decide_interaction(
+                    match.group(1),
+                    match.group(2),
+                    f"telegram:{sender}",
+                    binding,
+                )
+                text = "Allowed once." if match.group(2) == "once" else "Denied."
+                message_id = message.get("message_id")
+                if source and isinstance(message_id, int):
+                    await asyncio.to_thread(
+                        _telegram_call,
+                        token,
+                        "editMessageReplyMarkup",
+                        {"chat_id": source, "message_id": message_id, "reply_markup": {}},
+                    )
+            except Exception:
+                text = "That action could not be applied. It may already be resolved."
+        if callback_id:
+            await asyncio.to_thread(
+                _telegram_call,
+                token,
+                "answerCallbackQuery",
+                {"callback_query_id": callback_id, "text": text, "show_alert": not allowed},
+            )
 
 
 def generic_event(payload: Mapping[str, Any]) -> IncomingEvent:

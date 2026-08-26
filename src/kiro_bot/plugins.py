@@ -473,6 +473,8 @@ class PluginRegistry:
                         "env": resolved_env,
                     }
                 )
+                if plugin.id == "kiro-control":
+                    server["args"].extend(["--caller", bot_name])
             else:
                 server.update({"type": "http", "url": plugin.url})
 

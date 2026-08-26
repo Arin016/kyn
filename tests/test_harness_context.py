@@ -19,7 +19,9 @@ def test_capability_contract_states_remote_and_runtime_boundaries() -> None:
     assert "Telegram" in rendered
     assert "host machine and Kiro Bot daemon are" in rendered
     assert "separate machines" in rendered
-    assert "do not say it was created" in rendered
+    assert "Never say a team plan was created" in rendered
+    assert "create_team_plan" in rendered
+    assert "There is no blanket \"trust this run\" path" in rendered
 
 
 def test_execution_prompt_keeps_evidence_separate_from_current_request() -> None:

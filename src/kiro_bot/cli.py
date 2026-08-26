@@ -162,6 +162,7 @@ async def _render_engine_run(engine: Engine, run_id: str) -> None:
 def _serve(host: str, port: int) -> None:
     if not 1 <= port <= 65535:
         raise AcpError("port must be between 1 and 65535")
+    os.environ.setdefault("KIRO_BOT_CONTROL_URL", f"http://127.0.0.1:{port}")
     try:
         import uvicorn
 

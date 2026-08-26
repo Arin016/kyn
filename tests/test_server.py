@@ -15,7 +15,7 @@ fastapi = pytest.importorskip("fastapi")
 pytest.importorskip("starlette")
 
 from kiro_bot.server import create_app
-from kiro_bot.store import Store
+from kiro_bot.store import Bot, Store
 
 
 @dataclass
@@ -102,6 +102,33 @@ class FakeCodingController:
     async def cancel(self, execution_id: str) -> dict[str, Any]:
         assert execution_id == "coding-1"
         return {**self.snapshot, "status": "cancelled", "version": 5}
+
+
+def test_durable_interaction_routes_survive_stream_reconnect(tmp_path: Path) -> None:
+    store = Store(tmp_path / "store")
+    store.put_bot(Bot("builder", str(tmp_path)))
+    engine = FakeEngine()
+    engine.runs["run-1"] = FakeRun("run-1", "builder", "running")
+    app = create_app(store, engine)
+    interaction = app.state.interactions.create_permission(
+        run_id="run-1",
+        bot_name="builder",
+        actor="channel:telegram:phone",
+        request_id="permission-7",
+        title="Run tests",
+        tool_name="terminal.execute",
+    )
+    with _test_client(app) as client:
+        pending = client.get("/api/interactions?bot_name=builder&status=pending")
+        assert pending.status_code == 200
+        assert pending.json()[0]["id"] == interaction.id
+        decided = client.post(
+            f"/api/interactions/{interaction.id}/decide",
+            json={"decision": "once"},
+        )
+        assert decided.status_code == 200
+        assert engine.decisions == [("run-1", "permission-7", "once")]
+        assert decided.json()["status"] == "resolved"
 
 def _test_client(app: Any) -> Any:
     try:

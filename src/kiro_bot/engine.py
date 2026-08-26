@@ -23,6 +23,7 @@ from .workspaces import (
 )
 from .memory import SharedMemoryStore, local_scope
 from .harness_context import compose_execution_prompt
+from .interactions import InteractionStore
 
 try:
     from .governance import GovernanceStore, RunLease
@@ -276,8 +277,10 @@ class BotWorker:
             orchestrator = await self._ensure_orchestrator(execution_cwd)
             execution_prompt = await self.engine._execution_prompt(run)
             async for event in orchestrator.run(execution_prompt):
-                await self.engine._append_event(run, event)
-                await self.engine._apply_permission_policy(run, event, self)
+                if event.kind == "permission":
+                    await self.engine._apply_permission_policy(run, event, self)
+                else:
+                    await self.engine._append_event(run, event)
                 if run.terminal:
                     return
             if not run.terminal:
@@ -354,6 +357,7 @@ class Engine:
         run_repository: RunRepository | None = None,
         workspaces: WorkspaceManager | None = None,
         memory: SharedMemoryStore | None = None,
+        interactions: InteractionStore | None = None,
         orchestrator_factory: OrchestratorFactory | None = None,
         max_runs: int = 500,
         max_events_per_run: int = 5_000,
@@ -391,6 +395,9 @@ class Engine:
         self._memory = memory
         if self._memory is None and self._store is not None:
             self._memory = SharedMemoryStore(self._store)
+        self._interactions = interactions
+        if self._interactions is None and self._store is not None:
+            self._interactions = InteractionStore(self._store)
         self._max_runs = max_runs
         self._max_events_per_run = max_events_per_run
         self._recover_on_start = bool(recover_on_start)
@@ -775,6 +782,28 @@ class Engine:
                 raise InvalidRunOperation("the bot worker is no longer available")
 
             await worker.decide_permission(run.id, actual_request_id, decision)
+            if self._interactions is not None:
+                interactions = await asyncio.to_thread(
+                    self._interactions.list,
+                    bot_name=run.bot_name,
+                    status="pending",
+                    limit=500,
+                )
+                matching = next(
+                    (
+                        item
+                        for item in interactions
+                        if item.run_id == run.id and item.request_id == token
+                    ),
+                    None,
+                )
+                if matching is not None:
+                    await asyncio.to_thread(
+                        self._interactions.resolve,
+                        matching.id,
+                        decision,
+                        actor=run.actor or "user",
+                    )
             async with run.condition:
                 run.pending_permissions.pop(token, None)
                 if not run.pending_permissions and not run.terminal:
@@ -958,25 +987,9 @@ class Engine:
             record = _event_record(run.next_sequence, event)
             run.next_sequence += 1
             run.events.append(record)
-            if event.kind == "permission":
-                run.pending_permissions[str(event.request_id)] = (
-                    event.request_id,
-                    event.tool_name or "unknown",
-                )
-                run.status = "waiting_permission"
             if event.kind == "complete":
                 run.stop_reason = event.stop_reason
             run.condition.notify_all()
-        if (
-            event.kind == "permission"
-            and self._run_repository is not None
-            and run.durable_lease is not None
-        ):
-            await asyncio.to_thread(
-                self._run_repository.mark_waiting_permission,
-                run.id,
-                run.durable_lease.token,
-            )
 
     async def _apply_permission_policy(
         self,
@@ -988,6 +1001,13 @@ class Engine:
         if event.kind != "permission":
             return
         token = str(event.request_id)
+        async with run.permission_lock:
+            if run.terminal:
+                return
+            run.pending_permissions[token] = (
+                event.request_id,
+                event.tool_name or "unknown",
+            )
         plugin_denied = False
         decision_reason = ""
         canonical_tool_name = event.tool_name or "unknown"
@@ -1029,18 +1049,51 @@ class Engine:
         else:
             decision_name, decision_reason = "ask", "approval_required"
         if decision_name == "ask":
-            if self._governance is None:
-                return
-            await asyncio.to_thread(
-                self._governance.record_permission_decision,
-                run.bot_name,
-                run.id,
-                token,
-                event.tool_name,
-                "ask",
-                actor="policy",
-                reason=decision_reason,
+            async with run.condition:
+                run.status = "waiting_permission"
+                run.condition.notify_all()
+            interaction_id = ""
+            if self._interactions is not None:
+                interaction = await asyncio.to_thread(
+                    self._interactions.create_permission,
+                    run_id=run.id,
+                    bot_name=run.bot_name,
+                    actor=run.actor,
+                    request_id=token,
+                    title=event.title or "Tool permission requested",
+                    tool_name=event.tool_name or "unknown",
+                )
+                interaction_id = interaction.id
+            await self._append_event(
+                run,
+                Event(
+                    kind="interaction_required",
+                    title=event.title,
+                    tool_call_id=event.tool_call_id,
+                    request_id=event.request_id,
+                    options=event.options,
+                    tool_name=event.tool_name,
+                    mcp_server_name=event.mcp_server_name,
+                    interaction_id=interaction_id,
+                ),
             )
+            if self._run_repository is not None and run.durable_lease is not None:
+                await asyncio.to_thread(
+                    self._run_repository.mark_waiting_permission,
+                    run.id,
+                    run.durable_lease.token,
+                )
+            if self._governance is not None:
+                await asyncio.to_thread(
+                    self._governance.record_permission_decision,
+                    run.bot_name,
+                    run.id,
+                    token,
+                    event.tool_name,
+                    "ask",
+                    actor="policy",
+                    reason=decision_reason,
+                )
             return
 
         async with run.permission_lock:
@@ -1096,6 +1149,8 @@ class Engine:
                 run.error = error
                 run.finished_at = _now()
                 run.pending_permissions.clear()
+            if self._interactions is not None:
+                await asyncio.to_thread(self._interactions.expire_run, run.id)
             try:
                 execution = run.workspace_execution
                 if (
@@ -1237,6 +1292,7 @@ def _event_record(sequence: int, event: Event) -> dict[str, Any]:
         "stop_reason": str(event.stop_reason),
         "tool_name": str(event.tool_name),
         "mcp_server_name": str(event.mcp_server_name),
+        "interaction_id": str(event.interaction_id),
     }
 
 

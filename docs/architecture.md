@@ -61,6 +61,11 @@ must be serialized per session, but independent sessions may run concurrently.
 11. Keep governance audit records low-cardinality and payload-free. Prompts,
     tool arguments, environment values and raw provider frames do not belong in
     the audit schema.
+12. Represent each human gate as a durable, single-decision interaction. Never
+    turn a per-action approval into blanket trust for the rest of a run.
+13. Bind host actuation through the reserved `kiro-control` MCP with an explicit
+    tool set. It is host-managed, hidden from user MCP configuration and still
+    passes through ordinary permission policy.
 
 ## Implemented product layers
 
@@ -81,6 +86,10 @@ must be serialized per session, but independent sessions may run concurrently.
   at-least-once replay after a hard crash.
 - Durable multi-bot DAGs with bounded fan-out/depth, exclusive ready-node
   claims, dependency failure propagation, cancellation and aggregation.
+- A drag-and-drop workflow board over the DAG schema plus conversational
+  `create_team_plan`, inspection, cancellation and focused `call_bot` tools.
+- Durable interaction ledger with reload-safe control-room decisions and
+  Telegram inline decision callbacks scoped to the originating channel run.
 - Detached, token-leased Git workspaces with retained material output,
   contained artifact hashing and explicit clean-only cleanup.
 - Workspace-aware ACP execution with durable run-to-worktree bindings,
@@ -105,7 +114,7 @@ must be serialized per session, but independent sessions may run concurrently.
    for branch, pull-request and CI repair workflows. Merge remains human-only.
 2. Add a durable phase-event ledger and phase idempotency keys so every
    external side effect can be reconciled precisely after a hard crash.
-3. Add bot-to-bot mailboxes, group threads, a native Gmail OAuth/history
+3. Add asynchronous bot-to-bot mailboxes, group threads, a native Gmail OAuth/history
    synchronizer and a persistent browser/computer-use provider.
 4. Add authentication, organization controls and metered provider budgets.
 5. Add pluggable eval suites, model/harness routing and longitudinal quality

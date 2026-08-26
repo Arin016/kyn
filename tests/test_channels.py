@@ -17,6 +17,7 @@ from kiro_bot.channels import (
     ChannelStore,
     IncomingEvent,
     ProviderReplyDeliverer,
+    TelegramPoller,
     email_event,
     generic_event,
     github_event,
@@ -279,6 +280,81 @@ def test_telegram_requires_sender_allow_list_and_delivers_to_official_api(
     assert calls[0][1] == "sendMessage"
     assert calls[0][2]["chat_id"] == 111
     assert calls[0][2]["text"] == "done"
+
+
+def test_telegram_permission_is_a_single_use_inline_decision(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def scenario() -> None:
+        _, channels = _channels(tmp_path)
+        binding = _binding(
+            channels,
+            binding_id="telegram",
+            kind="telegram",
+            signing_secret_env="KIRO_TG_TOKEN",
+            allowed_senders=("111",),
+            allowed_sources=("111",),
+            trigger_prefix="",
+        )
+        incoming = telegram_event(
+            {
+                "update_id": 10,
+                "message": {
+                    "message_id": 4,
+                    "from": {"id": 111, "is_bot": False},
+                    "chat": {"id": 111, "type": "private"},
+                    "text": "ship it",
+                },
+            },
+            binding,
+        )
+        assert incoming is not None
+        event, _ = channels.accept(binding, incoming)
+        calls: list[tuple[str, dict[str, Any]]] = []
+
+        def fake_call(_token: str, method: str, payload: dict[str, Any] | None = None) -> object:
+            calls.append((method, dict(payload or {})))
+            return True
+
+        monkeypatch.setenv("KIRO_TG_TOKEN", "123456789:AAExampleTokenValueHere12345")
+        monkeypatch.setattr("kiro_bot.channels._telegram_call", fake_call)
+        interaction_id = "a" * 32
+        await ProviderReplyDeliverer().deliver_interaction(
+            binding,
+            event,
+            {
+                "id": interaction_id,
+                "title": "Run tests",
+                "tool_name": "terminal.execute",
+            },
+        )
+        keyboard = calls[0][1]["reply_markup"]["inline_keyboard"][0]
+        assert keyboard[0]["callback_data"] == f"kiro:i:{interaction_id}:once"
+        assert keyboard[1]["callback_data"] == f"kiro:i:{interaction_id}:reject"
+
+        decisions: list[tuple[str, str, str, str]] = []
+
+        async def decide(interaction: str, decision: str, actor: str, source_binding: Any) -> None:
+            decisions.append((interaction, decision, actor, source_binding.id))
+
+        poller = TelegramPoller(channels, lambda *_args: None, decide_interaction=decide)  # type: ignore[arg-type]
+        await poller._handle_callback(
+            binding,
+            "token",
+            {
+                "id": "callback-1",
+                "data": f"kiro:i:{interaction_id}:once",
+                "from": {"id": 111},
+                "message": {"message_id": 9, "chat": {"id": 111}},
+            },
+        )
+        assert decisions == [(interaction_id, "once", "telegram:111", "telegram")]
+        assert [method for method, _payload in calls[-2:]] == [
+            "editMessageReplyMarkup",
+            "answerCallbackQuery",
+        ]
+
+    asyncio.run(scenario())
 
 
 def test_telegram_poller_ingests_allowed_private_messages(

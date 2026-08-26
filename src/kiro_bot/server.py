@@ -32,6 +32,8 @@ from .plugins import PluginRegistry, PluginRegistryError
 from .run_store import RunRepository
 from .routines import RoutineNotFound, RoutineStore, Scheduler
 from .memory import SharedMemoryStore
+from .internal_control import CONTROL_PLUGIN_ID, ensure_bot_control, ensure_internal_control
+from .interactions import InteractionConflict, InteractionNotFound, InteractionStore
 from .store import Bot, Store
 from .workspaces import WorkspaceError, WorkspaceLease, WorkspaceManager
 from .coding_lifecycle import (
@@ -259,16 +261,23 @@ def create_app(
     active_store = store or Store()
     active_governance = governance or GovernanceStore(active_store)
     active_plugins = plugins or PluginRegistry(active_store)
+    ensure_internal_control(active_store, active_plugins)
     active_routines = routines or RoutineStore(active_store)
     active_delegations = delegations or DelegationStore(active_store)
     active_runs = RunRepository(active_store)
     active_memory = SharedMemoryStore(active_store)
+    active_interactions = InteractionStore(active_store)
     active_memory.backfill_local_history()
     active_workspaces = workspaces or WorkspaceManager(
         active_store, active_store.home / "workspaces"
     )
     active_engine = engine or _make_engine(
-        active_store, active_governance, active_plugins, active_workspaces, active_memory
+        active_store,
+        active_governance,
+        active_plugins,
+        active_workspaces,
+        active_memory,
+        active_interactions,
     )
     active_coding_store = CodingExecutionStore(active_store)
     active_coding_controller = coding_controller or CodingLifecycleController(
@@ -333,8 +342,45 @@ def create_app(
             # plans launch. This brief fallback also covers retention races.
             await asyncio.sleep(0.05)
 
+    async def run_interactions(run_id: str) -> list[Mapping[str, Any]]:
+        items = await asyncio.to_thread(
+            active_interactions.list, status="pending", limit=500
+        )
+        return [item.summary() for item in items if item.run_id == run_id]
+
+    async def channel_interaction_decision(
+        interaction_id: str,
+        decision: str,
+        actor: str,
+        binding: Any,
+    ) -> dict[str, Any]:
+        interaction = await asyncio.to_thread(
+            active_interactions.require, interaction_id
+        )
+        expected_actor = f"channel:{binding.kind}:{binding.id}"
+        if interaction.actor != expected_actor or interaction.bot_name != binding.bot_name:
+            raise ChannelAuthorizationError("interaction does not belong to this channel")
+        await _maybe_await(
+            active_engine.decide_permission(
+                interaction.run_id, interaction.request_id, decision
+            )
+        )
+        resolved = await asyncio.to_thread(
+            active_interactions.resolve,
+            interaction_id,
+            decision,
+            actor=actor,
+        )
+        return resolved.summary()
+
     active_channel_gateway = channel_gateway or ChannelGateway(
-        active_channels, engine_submit, delegated_wait, memory=active_memory, live=active_live
+        active_channels,
+        engine_submit,
+        delegated_wait,
+        memory=active_memory,
+        live=active_live,
+        list_interactions=run_interactions,
+        decide_interaction=channel_interaction_decision,
     )
 
     active_scheduler = scheduler or Scheduler(active_routines, scheduled_submit)
@@ -381,6 +427,7 @@ def create_app(
         app.state.delegation_coordinator = active_delegation_coordinator
         app.state.workspaces = active_workspaces
         app.state.memory = active_memory
+        app.state.interactions = active_interactions
         app.state.coding_controller = active_coding_controller
         app.state.channels = active_channels
         app.state.channel_gateway = active_channel_gateway
@@ -438,6 +485,7 @@ def create_app(
     app.state.delegation_coordinator = active_delegation_coordinator
     app.state.workspaces = active_workspaces
     app.state.memory = active_memory
+    app.state.interactions = active_interactions
     app.state.coding_controller = active_coding_controller
     app.state.channels = active_channels
     app.state.channel_gateway = active_channel_gateway
@@ -469,6 +517,21 @@ def create_app(
         return JSONResponse(
             status_code=422,
             content={"error": "invalid_plugin_configuration", "detail": str(exc)},
+        )
+
+    @app.exception_handler(InteractionNotFound)
+    async def interaction_not_found(
+        _request: Request, _exc: InteractionNotFound
+    ) -> JSONResponse:
+        return JSONResponse(status_code=404, content={"error": "interaction_not_found"})
+
+    @app.exception_handler(InteractionConflict)
+    async def interaction_conflict(
+        _request: Request, exc: InteractionConflict
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
+            content={"error": "interaction_conflict", "detail": str(exc)},
         )
 
     @app.exception_handler(CodingExecutionConflict)
@@ -529,6 +592,7 @@ def create_app(
             effort=(body.effort or "").strip(),
         )
         active_store.put_bot(bot)
+        ensure_bot_control(active_plugins, bot.name)
         return _bot_payload(bot)
 
     @app.get("/api/bots/{name}")
@@ -610,6 +674,59 @@ def create_app(
             raise HTTPException(status_code=409, detail="permission request is not actionable") from exc
         return {"run_id": run_id, "request_id": request_id, "decision": decision, "result": _json_safe(result)}
 
+    @app.get("/api/interactions")
+    async def list_interactions(
+        bot_name: str | None = None,
+        status: str | None = None,
+        limit: int = Query(default=100, ge=1, le=500),
+    ) -> list[dict[str, Any]]:
+        if bot_name is not None:
+            _require_bot(active_store, bot_name)
+        if status not in {None, "pending", "resolved", "expired"}:
+            raise HTTPException(
+                status_code=422,
+                detail="status must be pending, resolved or expired",
+            )
+        return [
+            item.summary()
+            for item in active_interactions.list(
+                bot_name=bot_name,
+                status=status,  # type: ignore[arg-type]
+                limit=limit,
+            )
+        ]
+
+    @app.post("/api/interactions/{interaction_id}/decide")
+    async def decide_interaction(
+        interaction_id: str, body: PermissionBody, request: Request
+    ) -> dict[str, Any]:
+        decision = body.decision.strip()
+        if decision not in _PERMISSION_DECISIONS:
+            raise HTTPException(status_code=422, detail="decision must be once or reject")
+        interaction = active_interactions.require(interaction_id)
+        if interaction.status != "pending":
+            if interaction.decision == decision:
+                return interaction.summary()
+            raise InteractionConflict("interaction has already been resolved")
+        try:
+            await _maybe_await(
+                active_engine.decide_permission(
+                    interaction.run_id,
+                    interaction.request_id,
+                    decision,
+                )
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="run was not found") from exc
+        except RuntimeError as exc:
+            raise HTTPException(
+                status_code=409, detail="interaction is no longer actionable"
+            ) from exc
+        actor = request.headers.get("x-kiro-actor", "control-room")[:300]
+        return active_interactions.resolve(
+            interaction_id, decision, actor=actor
+        ).summary()
+
     @app.post("/api/runs/{run_id}/cancel")
     async def cancel_run(run_id: str) -> dict[str, Any]:
         await _require_run(active_engine, run_id)
@@ -662,10 +779,16 @@ def create_app(
 
     @app.get("/api/plugins")
     async def list_plugins() -> list[dict[str, Any]]:
-        return active_plugins.plugin_summaries()
+        return [
+            item
+            for item in active_plugins.plugin_summaries()
+            if item.get("id") != CONTROL_PLUGIN_ID
+        ]
 
     @app.post("/api/plugins", status_code=201)
     async def create_plugin(body: CreatePluginBody) -> dict[str, Any]:
+        if body.id == CONTROL_PLUGIN_ID:
+            raise HTTPException(status_code=409, detail="plugin id is reserved")
         plugin = active_plugins.create_plugin(
             plugin_id=body.id,
             name=body.name,
@@ -680,17 +803,25 @@ def create_app(
 
     @app.delete("/api/plugins/{plugin_id}")
     async def delete_plugin(plugin_id: str) -> dict[str, Any]:
+        if plugin_id == CONTROL_PLUGIN_ID:
+            raise HTTPException(status_code=409, detail="plugin is managed by Kiro Bot")
         active_plugins.delete_plugin(plugin_id)
         return {"deleted": True, "id": plugin_id}
 
     @app.get("/api/bots/{name}/plugins")
     async def list_bot_plugins(name: str) -> list[dict[str, Any]]:
         _require_bot(active_store, name)
-        return active_plugins.binding_summaries(name)
+        return [
+            item
+            for item in active_plugins.binding_summaries(name)
+            if item.get("plugin_id") != CONTROL_PLUGIN_ID
+        ]
 
     @app.put("/api/bots/{name}/plugins/{plugin_id}")
     async def bind_plugin(name: str, plugin_id: str, body: BindPluginBody) -> dict[str, Any]:
         _require_bot(active_store, name)
+        if plugin_id == CONTROL_PLUGIN_ID:
+            raise HTTPException(status_code=409, detail="plugin is managed by Kiro Bot")
         binding = active_plugins.bind_plugin(
             name,
             plugin_id,
@@ -705,6 +836,8 @@ def create_app(
     @app.delete("/api/bots/{name}/plugins/{plugin_id}")
     async def unbind_plugin(name: str, plugin_id: str) -> dict[str, Any]:
         _require_bot(active_store, name)
+        if plugin_id == CONTROL_PLUGIN_ID:
+            raise HTTPException(status_code=409, detail="plugin is managed by Kiro Bot")
         active_plugins.unbind_plugin(name, plugin_id)
         return {"deleted": True, "bot_name": name, "plugin_id": plugin_id}
 
@@ -1110,6 +1243,7 @@ def _make_engine(
     plugins: PluginRegistry,
     workspaces: WorkspaceManager,
     memory: SharedMemoryStore,
+    interactions: InteractionStore,
 ) -> Any:
     try:
         from .engine import Engine
@@ -1122,6 +1256,7 @@ def _make_engine(
             plugins=plugins,
             workspaces=workspaces,
             memory=memory,
+            interactions=interactions,
         )
     except TypeError:
         return Engine(store)

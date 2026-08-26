@@ -121,6 +121,12 @@ Private chats are accepted as-is. Group messages are ignored unless they
 contain the invocation phrase. Replies are posted back to the same Telegram
 chat through the official Bot API only.
 
+If the Telegram-triggered run reaches a governed tool boundary, the bot sends
+an inline **Allow once** / **Deny** card into the same chat. The callback is
+accepted only from the configured sender/source allow lists and only for an
+interaction owned by that exact channel binding. The button disappears after
+the decision; no standing trust is created.
+
 ## GitHub
 
 Configure a repository or organization webhook with a strong secret and send

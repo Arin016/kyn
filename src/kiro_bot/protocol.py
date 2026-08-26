@@ -30,6 +30,7 @@ class Event:
     # model-authored display prose and must never drive allow-list decisions.
     tool_name: str = ""
     mcp_server_name: str = ""
+    interaction_id: str = ""
     raw: dict[str, Any] = field(default_factory=dict)
 
 
@@ -87,12 +88,18 @@ def parse_permission(message: dict[str, Any]) -> Event:
     params = message.get("params") if isinstance(message.get("params"), dict) else {}
     tool_call = params.get("toolCall") if isinstance(params.get("toolCall"), dict) else {}
     options = params.get("options") if isinstance(params.get("options"), list) else []
+    meta = tool_call.get("_meta") if isinstance(tool_call.get("_meta"), dict) else {}
+    if not meta and isinstance(params.get("_meta"), dict):
+        meta = params["_meta"]
+    kiro_meta = meta.get("kiro") if isinstance(meta.get("kiro"), dict) else {}
     return Event(
         kind="permission",
         title=str(tool_call.get("title") or tool_call.get("name") or "Tool request"),
         tool_call_id=str(tool_call.get("toolCallId") or tool_call.get("id") or ""),
         request_id=message.get("id", ""),
         options=[o for o in options if isinstance(o, dict)],
+        tool_name=str(kiro_meta.get("toolName") or ""),
+        mcp_server_name=str(kiro_meta.get("mcpServerName") or ""),
         raw=message,
     )
 
