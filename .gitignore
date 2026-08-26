@@ -16,3 +16,5 @@ build/
 htmlcov/
 reference/kiro/screenshots/
 web-ui/out/
+.vercel
+.env*

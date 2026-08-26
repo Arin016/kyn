@@ -19,6 +19,10 @@ workspaces, and orchestration.
 See [docs/positioning.md](docs/positioning.md) for the product promise, proof
 points, voice, and honest boundaries.
 
+**Live site:** [kyn-blush.vercel.app](https://kyn-blush.vercel.app) — marketing
+landing and engineering page (always on). The full control room runs on your
+machine with `kyn serve`, or on Fly.io for 24/7 hosting ([docs/deploy.md](docs/deploy.md)).
+
 ## What works now
 
 - Start and initialize a local Kiro ACP runtime.
@@ -155,6 +159,11 @@ Data is stored under `~/.kyn/` by default. Override it with
 `KYN_HOME=/some/path`.
 
 ## Always-on hosting
+
+| Surface | URL |
+| --- | --- |
+| Marketing (Vercel) | [kyn-blush.vercel.app](https://kyn-blush.vercel.app) |
+| Full daemon (Fly.io) | deploy with `./scripts/deploy-fly.sh` → `https://<app>.fly.dev` |
 
 Run the full daemon 24/7 on Fly.io (`Dockerfile`, `fly.toml`). Vercel hosts the
 marketing SPA; point it at a remote daemon with `VITE_KYN_API_URL`.
