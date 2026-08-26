@@ -4,7 +4,6 @@ import { Modal } from "../ui/Modal";
 import api from "../../api";
 import { csv, parseEnvReferences } from "../../lib/format";
 import type { Bot } from "../../types";
-import { WorkflowStudio } from "./WorkflowStudio";
 
 interface DialogProps {
   open: boolean;
@@ -426,9 +425,6 @@ export function ChannelDialog({ open, onClose, bot, onDone }: DialogProps) {
   );
 }
 
-export function DelegationDialog({ open, onClose, onDone, bots = [] }: DialogProps) {
-  return <WorkflowStudio open={open} onClose={onClose} onDone={onDone} bots={bots} />;
-}
 
 export function CodingDialog({ open, onClose, bot, onDone }: DialogProps) {
   const [error, setError] = useState("");

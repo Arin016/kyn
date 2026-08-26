@@ -86,8 +86,10 @@ must be serialized per session, but independent sessions may run concurrently.
   at-least-once replay after a hard crash.
 - Durable multi-bot DAGs with bounded fan-out/depth, exclusive ready-node
   claims, dependency failure propagation, cancellation and aggregation.
-- A drag-and-drop workflow board over the DAG schema plus conversational
+- A dedicated Workflow playground over the DAG schema plus conversational
   `create_team_plan`, inspection, cancellation and focused `call_bot` tools.
+  The playground has a saved-plan rail, node-and-arrow canvas, gesture zoom,
+  bottom validation/output panel, and per-plan review state.
 - Durable interaction ledger with reload-safe control-room decisions and
   Telegram inline decision callbacks scoped to the originating channel run.
 - Detached, token-leased Git workspaces with retained material output,

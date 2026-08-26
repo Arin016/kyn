@@ -81,6 +81,7 @@ export const api = {
   audit: (bot: string) =>
     request<AuditItem[]>(`/api/audit?bot_name=${encodeURIComponent(bot)}&limit=8`),
   delegations: () => request<DelegationPlan[]>("/api/delegations"),
+  delegation: (id: string) => request<import("./types").DelegationDetail>(`/api/delegations/${encodeURIComponent(id)}`),
   createDelegation: (payload: Record<string, unknown>) =>
     request("/api/delegations", { method: "POST", body: JSON.stringify(payload) }),
   startDelegation: (id: string) =>

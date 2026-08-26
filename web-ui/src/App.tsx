@@ -11,6 +11,7 @@ import { Thread } from "./components/chat/Thread";
 import type { Part } from "./components/chat/Message";
 import { Composer } from "./components/chat/Composer";
 import { Sidebar } from "./components/Sidebar";
+import { WorkflowPlayground } from "./components/workflows/WorkflowPlayground";
 import { InspectPanel, type InspectTab, type ManagementData } from "./components/inspect/InspectPanel";
 import type { WorkActions } from "./components/inspect/WorkTab";
 import type { SafetyActions } from "./components/inspect/SafetyTab";
@@ -18,7 +19,6 @@ import {
   ChannelDialog,
   CodingDialog,
   CreateBotDialog,
-  DelegationDialog,
   PluginDialog,
   RoutineDialog,
 } from "./components/dialogs/Dialogs";
@@ -42,7 +42,7 @@ import type {
   TimelineEntry,
 } from "./types";
 
-type DialogName = "bot" | "routine" | "plugin" | "channel" | "delegation" | "coding" | null;
+type DialogName = "bot" | "routine" | "plugin" | "channel" | "coding" | null;
 
 interface ActiveRun {
   id: string;
@@ -268,6 +268,7 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
   const [inspectTab, setInspectTab] = useState<InspectTab>("run");
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 900);
   const [dialog, setDialog] = useState<DialogName>(null);
+  const [workspace, setWorkspace] = useState<"conversation" | "workflows">("conversation");
 
   const [management, setManagement] = useState<ManagementData>({
     policy: null,
@@ -551,6 +552,7 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
       setRunDetail("");
       setTimeline([]);
       setInspectPinned(false);
+      setWorkspace("conversation");
       const url = new URL(location.href);
       url.searchParams.set("bot", bot.name);
       history.replaceState({}, "", url);
@@ -672,7 +674,7 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
       onApproveCoding: (execution: CodingExecution) =>
         void guard(() => api.approveCodingExecution(execution.id, execution.version), "Verified handoff approved."),
       onCancelCoding: (execution: CodingExecution) => void guard(() => api.cancelCodingExecution(execution.id)),
-      onNewDelegation: () => setDialog("delegation"),
+      onNewDelegation: () => setWorkspace("workflows"),
       onStartDelegation: (plan: DelegationPlan) => void guard(() => api.startDelegation(plan.id)),
       onCancelDelegation: (plan: DelegationPlan) => void guard(() => api.cancelDelegation(plan.id)),
       onNewChannel: () => setDialog("channel"),
@@ -705,13 +707,13 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
   );
 
   useEffect(() => {
-    if (inspectTab !== "work" || !selectedBot) return;
+    if ((inspectTab !== "work" && workspace !== "workflows") || !selectedBot) return;
     const timer = window.setInterval(() => {
       void api.delegations().then((plans) => setManagement((c) => ({ ...c, delegations: plans as DelegationPlan[] }))).catch(() => undefined);
       void api.codingExecutions().then((executions) => setManagement((c) => ({ ...c, codingExecutions: executions as CodingExecution[] }))).catch(() => undefined);
     }, 2000);
     return () => window.clearInterval(timer);
-  }, [inspectTab, selectedBot]);
+  }, [inspectTab, selectedBot, workspace]);
 
   const changeTab = useCallback(
     (tab: InspectTab) => {
@@ -767,6 +769,8 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
         theme={theme}
         onToggleTheme={toggleTheme}
         onNewBot={() => setDialog("bot")}
+        workspace={workspace}
+        onWorkspaceChange={setWorkspace}
       />
 
       <main className="main">
@@ -791,14 +795,14 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
               <KiroGlyph size={20} />
             </button>
             <span style={{ fontWeight: 600, fontSize: "0.95rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {selectedBot ? selectedBot.name : "Choose a bot"}
+              {workspace === "workflows" ? "Workflow playground" : selectedBot ? selectedBot.name : "Choose a bot"}
             </span>
           </div>
           <div className="header-actions">
             <button
               type="button"
               className="workflow-launch"
-              onClick={() => setDialog("delegation")}
+              onClick={() => setWorkspace("workflows")}
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
                 <rect x="3" y="4" width="6" height="5" rx="1" />
@@ -822,6 +826,16 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
           </div>
         </header>
 
+        {workspace === "workflows" ? (
+          <WorkflowPlayground
+            bots={bots}
+            plans={management.delegations}
+            onRefresh={doneAndReload}
+            onStart={(plan) => void guard(() => api.startDelegation(plan.id), "Workflow started.")}
+            onCancel={(plan) => void guard(() => api.cancelDelegation(plan.id), "Workflow cancelled.")}
+            onBackToChat={() => setWorkspace("conversation")}
+          />
+        ) : <>
         <div ref={containerRef} className="thread-scroll" onScroll={onScroll}>
           <Thread
             parts={threadParts}
@@ -860,6 +874,7 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
           onSubmit={(message) => void submitTurn(message)}
           onStop={() => void cancelRun()}
         />
+        </>}
       </main>
 
       <InspectPanel
@@ -883,7 +898,6 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
       {dialog === "routine" && <RoutineDialog {...dialogProps} />}
       {dialog === "plugin" && <PluginDialog {...dialogProps} />}
       {dialog === "channel" && <ChannelDialog {...dialogProps} />}
-      {dialog === "delegation" && <DelegationDialog {...dialogProps} />}
       {dialog === "coding" && <CodingDialog {...dialogProps} />}
 
       {activeRun && <RunStream key={activeRun.id} run={activeRun} onEvent={handleStreamEvent} />}

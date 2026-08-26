@@ -30,7 +30,7 @@ The same named agent can receive work from the browser, Slack, GitHub, WhatsApp,
 ### A roster, not one overloaded chat
 
 Builders, reviewers, operators, triage agents, and coordinators can keep different context and policies. Independent agents can run concurrently; durable plans express dependencies.
-Plans can be spoken into existence through a governed bot tool or drawn as a drag-and-drop workflow. A bot can call another named bot for a focused result.
+Plans can be spoken into existence through a governed bot tool or built in the dedicated Workflow playground. It provides a saved-plan rail, visual node-and-arrow canvas, gesture zoom, validation messages, and recorded bot outputs. A bot can call another named bot for a focused result.
 
 ### Autonomy with a hard edge
 
@@ -43,7 +43,7 @@ Every consequential gate is an individual durable decision. There is no blanket 
 - Cross-surface memory with immutable source records.
 - One-time and repeating routines.
 - Multi-agent DAG execution with cancellation and bounded concurrency.
-- Conversational team actuation, focused bot calls, and a no-code workflow board.
+- Conversational team actuation, focused bot calls, and a no-code workflow playground with plan review.
 - Reload-safe interaction cards and Telegram inline Allow once / Deny callbacks.
 - Signature-verified remote channels and allow lists.
 - Detached Git workspaces and SHA-256 artifact manifests.

@@ -18,6 +18,8 @@ interface Props {
   theme: Theme;
   onToggleTheme: () => void;
   onNewBot: () => void;
+  workspace: "conversation" | "workflows";
+  onWorkspaceChange: (workspace: "conversation" | "workflows") => void;
 }
 
 function latestThread(events: ChannelEvent[], channelId: string): { threadKey: string; preview: string; live: boolean } {
@@ -48,6 +50,8 @@ export function Sidebar({
   theme,
   onToggleTheme,
   onNewBot,
+  workspace,
+  onWorkspaceChange,
 }: Props) {
   const [query, setQuery] = useState("");
 
@@ -80,6 +84,12 @@ export function Sidebar({
           </svg>
           New bot
         </button>
+
+        <div className="sidebar-heading">Workspace</div>
+        <ul className="sidebar-list" aria-label="Workspace views">
+          <li><button type="button" className={`side-item${workspace === "conversation" ? " selected" : ""}`} onClick={() => onWorkspaceChange("conversation")}><span className="side-item-mark" aria-hidden /><span className="side-item-copy"><span className="side-item-name">Conversation</span><span className="side-item-meta">Talk to one bot</span></span></button></li>
+          <li><button type="button" className={`side-item${workspace === "workflows" ? " selected" : ""}`} onClick={() => onWorkspaceChange("workflows")}><span className="side-item-mark live" aria-hidden /><span className="side-item-copy"><span className="side-item-name">Workflows</span><span className="side-item-meta">Build a team graph</span></span></button></li>
+        </ul>
 
         <div className="sidebar-heading">Bots</div>
         <ul className="sidebar-list" aria-label="Available bots">

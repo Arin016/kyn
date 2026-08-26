@@ -113,6 +113,31 @@ export interface DelegationPlan {
   status: string;
   max_fanout?: number;
   max_depth?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface DelegationNode {
+  id: string;
+  bot_name: string;
+  prompt: string;
+  status: string;
+  depth?: number;
+  ordinal?: number;
+  result?: unknown;
+  error?: string;
+}
+
+export interface DelegationEdge {
+  source: string;
+  target: string;
+}
+
+export interface DelegationDetail {
+  plan: DelegationPlan;
+  nodes: DelegationNode[];
+  edges: DelegationEdge[];
+  aggregation?: { counts?: Record<string, number>; nodes?: DelegationNode[] };
 }
 
 export interface CodingExecution {

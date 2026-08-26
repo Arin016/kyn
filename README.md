@@ -112,8 +112,11 @@ builder bot, choose a separate reviewer, describe the task, and provide direct
 argument-vector checks such as `tests: python, -m, pytest, -q`. A ready result
 still requires a human handoff approval.
 
-The **Teams** workflow builder turns draggable bot cards and explicit "wait
-for" links into the same durable dependency graph used by the API. Bots can
+The **Workflow playground** is a dedicated control-room surface for composing
+and reviewing a team. It keeps every saved workflow in a left rail, renders
+its graph on a full canvas, shows recorded per-bot output in the bottom event
+panel, and validates bad arrows before a plan is sent. Pinch (or ⌘/Ctrl +
+wheel) zooms the canvas; node ports create explicit dependencies. Bots can
 also invoke the reserved `kiro-control` MCP to create that graph directly from
 a conversation; the host still asks before executing the control tool.
 
