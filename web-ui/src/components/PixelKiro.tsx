@@ -34,11 +34,11 @@ function sampleTargets(width: number, height: number, mode: number) {
   if (!ctx) return [] as Array<[number, number]>;
   ctx.fillStyle = "#fff";
   if (mode % 2 === 0) {
-    const size = Math.min(height * 0.42, width * 0.22);
+    const size = Math.min(height * 0.52, width * 0.3);
     ctx.font = `800 ${size}px "Space Grotesk", Inter, sans-serif`;
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
-    ctx.fillText("KIRO", width * 1.01, height * 0.48);
+    ctx.fillText("KYN", width * 0.99, height * 0.48);
   } else drawGhost(ctx, width, height);
   const pixels = ctx.getImageData(0, 0, mask.width, mask.height).data;
   const step = Math.max(7, Math.round(Math.min(width, height) / 92));
@@ -104,13 +104,13 @@ export function PixelKiro() {
         p.y += (p.ty - p.y) * (0.026 + settle * 0.045);
         const x = p.x + (reduced.matches ? 0 : Math.sin(time * 0.00072 + p.phase) * 2.2);
         const y = p.y + (reduced.matches ? 0 : Math.cos(time * 0.00054 + p.phase) * 1.6);
-        const alpha = 0.16 + settle * (0.2 + p.tone * 0.38);
+        const alpha = 0.32 + settle * (0.38 + p.tone * 0.42);
         ctx.fillStyle = p.tone > 0.84
-          ? `rgba(94,225,255,${alpha * 0.72})`
+          ? `rgba(94,225,255,${alpha * 0.88})`
           : `rgba(${150 + Math.round(p.tone * 60)},${72 + Math.round(p.tone * 40)},255,${alpha})`;
         ctx.fillRect(x, y, p.size, p.size);
         if (!reduced.matches && i % 47 === frame % 47 && settle < 0.95) {
-          ctx.strokeStyle = `rgba(167,105,255,${0.05 * (1 - settle)})`;
+          ctx.strokeStyle = `rgba(167,105,255,${0.09 * (1 - settle)})`;
           ctx.lineWidth = 0.55;
           ctx.beginPath(); ctx.moveTo(rect.width + 30, y); ctx.lineTo(x, y); ctx.stroke();
         }

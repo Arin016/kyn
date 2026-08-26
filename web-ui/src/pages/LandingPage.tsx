@@ -354,7 +354,7 @@ export default function LandingPage({ onEnterConsole, onOpenEngineering }: Props
         </section>
 
         {/* INSTALL */}
-        <section className="ed-section">
+        <section id="start-local" className="ed-section">
           <div className="ed-container">
             <Reveal>
               <p className="ed-eyebrow">Start local</p>

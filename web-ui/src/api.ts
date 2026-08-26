@@ -11,11 +11,14 @@ import type {
   Policy,
   Routine,
 } from "./types";
+import { accessToken, apiBase } from "./lib/deploy";
 
 async function request<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers);
   if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-  const response = await fetch(path, { ...options, headers });
+  const token = accessToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const response = await fetch(`${apiBase}${path}`, { ...options, headers });
   const body = await response.text();
   let data: unknown = {};
   try {

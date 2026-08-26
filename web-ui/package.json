@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:vercel": "VITE_MARKETING_ONLY=true VERCEL=1 tsc -b && vite build",
     "preview": "vite preview",
     "video": "remotion studio video/index.ts",
     "video:render": "remotion render video/index.ts ProductDemo out/kyn-demo-remotion.mp4",

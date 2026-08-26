@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { accessToken, apiBase } from "../lib/deploy";
 
 type MessageHandler = (payload: unknown) => void;
 
@@ -71,6 +72,13 @@ export function useWebSocket(
 }
 
 export function wsUrl(path: string): string {
+  if (apiBase) {
+    const remote = new URL(apiBase);
+    const protocol = remote.protocol === "https:" ? "wss:" : "ws:";
+    const token = accessToken();
+    const suffix = token ? `?token=${encodeURIComponent(token)}` : "";
+    return `${protocol}//${remote.host}${path}${suffix}`;
+  }
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
   return `${protocol}//${location.host}${path}`;
 }

@@ -46,6 +46,7 @@ from .coding_lifecycle import (
     CodingLifecycleError,
 )
 from .live import LiveBus
+from .remote import authorize_websocket, install_remote_guard
 from .channels import (
     ChannelAuthenticationError,
     ChannelAuthorizationError,
@@ -473,6 +474,7 @@ def create_app(
                                 await _maybe_await(active_engine.close())
 
     app = FastAPI(title="KYN", version="0.1.0", lifespan=lifespan)
+    install_remote_guard(app)
     # State is also populated immediately for ASGI hosts that inspect the app
     # before entering its lifespan.
     app.state.store = active_store
@@ -1178,6 +1180,8 @@ def create_app(
 
     @app.websocket("/ws/runs/{run_id}")
     async def stream_run(websocket: WebSocket, run_id: str, after: int = Query(default=0, ge=0)) -> None:
+        if not await authorize_websocket(websocket):
+            return
         if await _get_run(active_engine, run_id) is None:
             await websocket.close(code=4404, reason="run not found")
             return
@@ -1206,6 +1210,8 @@ def create_app(
 
     @app.websocket("/ws/live")
     async def stream_live(websocket: WebSocket) -> None:
+        if not await authorize_websocket(websocket):
+            return
         await websocket.accept()
         queue = active_live.subscribe()
         try:

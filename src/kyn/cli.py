@@ -160,6 +160,10 @@ async def _render_engine_run(engine: Engine, run_id: str) -> None:
 
 
 def _serve(host: str, port: int) -> None:
+    host = os.environ.get("KYN_HOST", host)
+    env_port = os.environ.get("PORT") or os.environ.get("KYN_PORT")
+    if env_port:
+        port = int(env_port)
     if not 1 <= port <= 65535:
         raise AcpError("port must be between 1 and 65535")
     os.environ.setdefault("KYN_CONTROL_URL", f"http://127.0.0.1:{port}")

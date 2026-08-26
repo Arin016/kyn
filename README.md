@@ -154,6 +154,18 @@ uv run pytest -q
 Data is stored under `~/.kyn/` by default. Override it with
 `KYN_HOME=/some/path`.
 
+## Always-on hosting
+
+Run the full daemon 24/7 on Fly.io (`Dockerfile`, `fly.toml`). Vercel hosts the
+marketing SPA; point it at a remote daemon with `VITE_KYN_API_URL`.
+
+```bash
+chmod +x scripts/deploy-fly.sh
+./scripts/deploy-fly.sh
+```
+
+Details: [docs/deploy.md](docs/deploy.md).
+
 ## Architecture
 
 ```text

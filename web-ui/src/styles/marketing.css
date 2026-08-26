@@ -336,7 +336,7 @@
 }
 .ed-pixel-kiro,
 .ed-hero-vignette { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.ed-pixel-kiro { z-index: -2; opacity: 0.88; filter: saturate(1.15); }
+.ed-pixel-kiro { z-index: -2; opacity: 1; filter: saturate(1.25) brightness(1.08); }
 .ed-hero-vignette {
   z-index: -1;
   background:
@@ -356,7 +356,7 @@
 }
 @media (max-width: 1000px) {
   .ed-hero-stage { min-height: auto; }
-  .ed-pixel-kiro { opacity: 0.5; }
+  .ed-pixel-kiro { opacity: 0.78; }
   .ed-hero-vignette { background: linear-gradient(90deg, #000 0%, rgba(0,0,0,.9) 58%, rgba(0,0,0,.34) 100%); }
   .ed-hero-2col {
     grid-template-columns: 1fr;
@@ -427,7 +427,7 @@
 }
 
 @media (max-width: 600px) {
-  .ed-pixel-kiro { opacity: 0.34; }
+  .ed-pixel-kiro { opacity: 0.62; }
   .ed-hero-vignette { background: linear-gradient(180deg, rgba(0,0,0,.58), #000 88%); }
   .ed-nav-inner { height: 72px; }
   .ed-hero-2col {

@@ -4,8 +4,9 @@ import { wsUrl, useWebSocket } from "./hooks/useWebSocket";
 import { ToastProvider, useToast } from "./hooks/useToast";
 import { useTheme, type Theme } from "./lib/theme";
 import { useStickToBottom } from "./lib/useStickToBottom";
-import LandingPage from "./pages/LandingPage";
+import { isMarketingDeploy } from "./lib/deploy";
 import EngineeringPage from "./pages/EngineeringPage";
+import LandingPage from "./pages/LandingPage";
 import { KiroGlyph } from "./components/KiroGlyph";
 import { Thread } from "./components/chat/Thread";
 import type { Part } from "./components/chat/Message";
@@ -908,6 +909,10 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
 type View = "landing" | "engineering" | "console";
 
 function resolveView(): View {
+  if (isMarketingDeploy) {
+    if (location.hash.includes("engineering")) return "engineering";
+    return "landing";
+  }
   if (new URLSearchParams(location.search).has("bot")) return "console";
   if (location.hash.includes("console")) return "console";
   if (location.hash.includes("engineering")) return "engineering";
@@ -929,6 +934,14 @@ export function App() {
   }, [view]);
 
   const enterConsole = useCallback(() => {
+    if (isMarketingDeploy) {
+      history.replaceState(null, "", "#start-local");
+      setView("landing");
+      requestAnimationFrame(() => {
+        document.getElementById("start-local")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+      return;
+    }
     history.replaceState(null, "", "#console");
     setView("console");
   }, []);
