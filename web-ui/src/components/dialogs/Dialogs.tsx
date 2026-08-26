@@ -68,8 +68,9 @@ export function CreateBotDialog({ open, onClose, onDone }: DialogProps) {
         className="modal-form"
         onSubmit={async (event: FormEvent<HTMLFormElement>) => {
           event.preventDefault();
+          const form = event.currentTarget;
           setError("");
-          const values = formValues(event.currentTarget);
+          const values = formValues(form);
           const payload: Record<string, string> = {
             name: values.name,
             cwd: values.cwd,
@@ -79,7 +80,7 @@ export function CreateBotDialog({ open, onClose, onDone }: DialogProps) {
           if (effort) payload.effort = effort;
           try {
             await api.createBot(payload);
-            event.currentTarget.reset();
+            form.reset();
             setAgent(""); setModel(""); setCustomModel(""); setEffort("");
             onClose();
             onDone();
@@ -167,9 +168,10 @@ export function RoutineDialog({ open, onClose, bot, onDone }: DialogProps) {
         className="modal-form"
         onSubmit={async (event) => {
           event.preventDefault();
+          const form = event.currentTarget;
           if (!bot) return;
           setError("");
-          const values = formValues(event.currentTarget);
+          const values = formValues(form);
           const payload: Record<string, unknown> = {
             name: values.name,
             bot_name: bot.name,
@@ -180,7 +182,7 @@ export function RoutineDialog({ open, onClose, bot, onDone }: DialogProps) {
           else payload.run_at = values.run_at ? new Date(values.run_at).toISOString() : "";
           try {
             await api.createRoutine(payload);
-            event.currentTarget.reset();
+            form.reset();
             setKind("interval");
             onClose();
             onDone();
@@ -238,9 +240,10 @@ export function PluginDialog({ open, onClose, bot, onDone }: DialogProps) {
         className="modal-form"
         onSubmit={async (event) => {
           event.preventDefault();
+          const form = event.currentTarget;
           if (!bot) return;
           setError("");
-          const values = formValues(event.currentTarget);
+          const values = formValues(form);
           const payload: Record<string, unknown> = {
             id: values.id,
             name: values.name,
@@ -265,7 +268,7 @@ export function PluginDialog({ open, onClose, bot, onDone }: DialogProps) {
           try {
             await api.createPlugin(payload);
             await api.bindPlugin(bot.name, payload.id as string);
-            event.currentTarget.reset();
+            form.reset();
             setTransport("stdio");
             onClose();
             onDone();
@@ -333,9 +336,10 @@ export function ChannelDialog({ open, onClose, bot, onDone }: DialogProps) {
         className="modal-form"
         onSubmit={async (event) => {
           event.preventDefault();
+          const form = event.currentTarget;
           if (!bot) return;
           setError("");
-          const values = formValues(event.currentTarget);
+          const values = formValues(form);
           try {
             await api.createChannel({
               id: values.id,
@@ -349,7 +353,7 @@ export function ChannelDialog({ open, onClose, bot, onDone }: DialogProps) {
               allowed_sources: csv(values.allowed_sources),
               allowed_senders: csv(values.allowed_senders),
             });
-            event.currentTarget.reset();
+            form.reset();
             onClose();
             onDone();
           } catch (exc) {
@@ -600,9 +604,10 @@ export function CodingDialog({ open, onClose, bot, onDone }: DialogProps) {
         className="modal-form"
         onSubmit={async (event) => {
           event.preventDefault();
+          const form = event.currentTarget;
           if (!bot) return;
           setError("");
-          const values = formValues(event.currentTarget);
+          const values = formValues(form);
           try {
             const checks = String(values.checks || "")
               .split("\n")
@@ -625,7 +630,7 @@ export function CodingDialog({ open, onClose, bot, onDone }: DialogProps) {
               checks,
               max_repairs: Number(values.max_repairs || 0),
             });
-            event.currentTarget.reset();
+            form.reset();
             setRepoPath("");
             onClose();
             onDone();
