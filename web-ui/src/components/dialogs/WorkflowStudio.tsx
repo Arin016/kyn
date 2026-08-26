@@ -33,6 +33,7 @@ interface Props {
   draftKey: number;
   onDone: () => void;
   bots: Bot[];
+  demoMode?: boolean;
   onStartPlan?: (planId: string) => void;
   onCancelPlan?: (planId: string) => void;
 }
@@ -130,7 +131,7 @@ function layoutNodes(nodes: CanvasNode[]): CanvasNode[] {
   });
 }
 
-export function WorkflowStudio({ activePlan = null, draftKey, onDone, bots, onStartPlan, onCancelPlan }: Props) {
+export function WorkflowStudio({ activePlan = null, draftKey, onDone, bots, demoMode = false, onStartPlan, onCancelPlan }: Props) {
   const [name, setName] = useState("");
   const [nodes, setNodes] = useState<CanvasNode[]>([]);
   const [zoom, setZoom] = useState(0.9);
@@ -245,6 +246,10 @@ export function WorkflowStudio({ activePlan = null, draftKey, onDone, bots, onSt
 
   const runWorkflow = async () => {
     setError("");
+    if (demoMode) {
+      setNotice("Demo preview — run `uv run kyn serve` locally to execute workflows.");
+      return;
+    }
     if (!name.trim()) return setError("Give this workflow a name.");
     if (!nodes.length) return setError("Add at least one bot node.");
     if (nodes.some((node) => !node.botName || !node.prompt.trim())) {

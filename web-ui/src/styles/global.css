@@ -1950,6 +1950,12 @@ details summary {
 
 /* Toasts */
 
+.status-pill.preview {
+  color: #c6aaff;
+  border-color: color-mix(in srgb, var(--brand) 45%, var(--border));
+  background: color-mix(in srgb, var(--brand) 12%, transparent);
+}
+
 .toast-region {
   position: fixed;
   right: 16px;

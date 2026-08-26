@@ -2,10 +2,12 @@ import { useEffect, useState } from "react";
 import api from "../../api";
 import type { Bot, DelegationDetail, DelegationPlan } from "../../types";
 import { WorkflowStudio } from "../dialogs/WorkflowStudio";
+import { demoDelegationDetail } from "../../lib/demoConsole";
 
 interface Props {
   bots: Bot[];
   plans: DelegationPlan[];
+  demoMode?: boolean;
   onRefresh: () => void;
   onStart: (plan: DelegationPlan) => void;
   onCancel: (plan: DelegationPlan) => void;
@@ -14,7 +16,7 @@ interface Props {
 
 const terminal = new Set(["succeeded", "failed", "cancelled"]);
 
-export function WorkflowPlayground({ bots, plans, onRefresh, onStart, onCancel, onBackToChat }: Props) {
+export function WorkflowPlayground({ bots, plans, demoMode = false, onRefresh, onStart, onCancel, onBackToChat }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<DelegationDetail | null>(null);
   const [loading, setLoading] = useState(false);
@@ -29,6 +31,13 @@ export function WorkflowPlayground({ bots, plans, onRefresh, onStart, onCancel, 
       setLoadError("");
       return;
     }
+    if (demoMode) {
+      const mock = demoDelegationDetail(selectedId);
+      setDetail(mock);
+      setLoadError(mock ? "" : "Demo workflow not found.");
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     setLoadError("");
@@ -39,7 +48,7 @@ export function WorkflowPlayground({ bots, plans, onRefresh, onStart, onCancel, 
     load();
     const timer = window.setInterval(load, 2500);
     return () => { cancelled = true; window.clearInterval(timer); };
-  }, [selectedId]);
+  }, [selectedId, demoMode]);
 
   const selectDraft = () => {
     setSelectedId(null);
@@ -90,6 +99,7 @@ export function WorkflowPlayground({ bots, plans, onRefresh, onStart, onCancel, 
             bots={bots}
             activePlan={detail}
             draftKey={draftKey}
+            demoMode={demoMode}
             onDone={() => { onRefresh(); selectDraft(); }}
             onStartPlan={(id) => { if (selectedPlan && selectedPlan.id === id) onStart(selectedPlan); }}
             onCancelPlan={(id) => { if (selectedPlan && selectedPlan.id === id) onCancel(selectedPlan); }}

@@ -13,6 +13,7 @@ interface Props {
   unread: Record<string, number>;
   localLive: boolean;
   connected: boolean;
+  connectionLabel?: string;
   open: boolean;
   onClose: () => void;
   onNewBot: () => void;
@@ -44,6 +45,7 @@ export function Sidebar({
   unread,
   localLive,
   connected,
+  connectionLabel,
   open,
   onClose,
   onNewBot,
@@ -167,7 +169,7 @@ export function Sidebar({
         </ul>
 
         <div className="sidebar-footer">
-          <span>{connected ? "Control plane online" : "Offline"}</span>
+          <span>{connectionLabel ?? (connected ? "Control plane online" : "Offline")}</span>
         </div>
       </div>
     </aside>

@@ -4,6 +4,14 @@ import { wsUrl, useWebSocket } from "./hooks/useWebSocket";
 import { ToastProvider, useToast } from "./hooks/useToast";
 import { useStickToBottom } from "./lib/useStickToBottom";
 import { isMarketingDeploy } from "./lib/deploy";
+import {
+  DEMO_BOTS,
+  DEMO_CHANNEL,
+  DEMO_CHANNEL_EVENTS,
+  DEMO_THREADS,
+  demoManagementData,
+  demoResponseFor,
+} from "./lib/demoConsole";
 import EngineeringPage from "./pages/EngineeringPage";
 import LandingPage from "./pages/LandingPage";
 import { KiroGlyph } from "./components/KiroGlyph";
@@ -250,6 +258,13 @@ function RunStream({
 function ControlRoom({ onExit }: { onExit: () => void }) {
   const { showToast } = useToast();
   const marketing = isMarketingDeploy;
+  const demoStreamRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (demoStreamRef.current) window.clearInterval(demoStreamRef.current);
+    };
+  }, []);
 
   const [bots, setBots] = useState<Bot[]>([]);
   const [selectedBot, setSelectedBot] = useState<Bot | null>(null);
@@ -468,6 +483,12 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
 
   const loadManagement = useCallback(async () => {
     if (!selectedBot) return;
+    if (marketing) {
+      setManagement(demoManagementData());
+      setChannels([DEMO_CHANNEL]);
+      setChannelEvents(DEMO_CHANNEL_EVENTS);
+      return;
+    }
     try {
       const [policy, routines, plugins, bindings, audit, delegations, codingExecutions, channelList, events, memory] =
         await Promise.all([
@@ -499,10 +520,14 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
     } catch (error) {
       showToast((error as Error).message || "Could not load bot controls", true);
     }
-  }, [selectedBot, showToast]);
+  }, [selectedBot, showToast, marketing]);
 
   const loadInteractions = useCallback(async () => {
     if (!selectedBot) return;
+    if (marketing) {
+      setPermissions([]);
+      return;
+    }
     try {
       const items = await api.interactions(selectedBot.name);
       setPermissions(
@@ -518,10 +543,14 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
     } catch (error) {
       showToast((error as Error).message || "Could not load pending actions", true);
     }
-  }, [selectedBot, showToast]);
+  }, [selectedBot, showToast, marketing]);
 
   const loadThread = useCallback(async () => {
     if (!selectedBot) return;
+    if (marketing) {
+      setParts(DEMO_THREADS[selectedBot.name] ?? []);
+      return;
+    }
     try {
       const data = await api.history(selectedBot.name);
       setParts(mapHistoryToParts(normalizeHistory(data)));
@@ -529,7 +558,7 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
       setParts([]);
       showToast((error as Error).message || "Could not load this conversation", true);
     }
-  }, [selectedBot, showToast]);
+  }, [selectedBot, showToast, marketing]);
 
   const selectSurface = useCallback(
     (next: Surface) => {
@@ -575,7 +604,13 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
 
   const loadBots = useCallback(async () => {
     if (marketing) {
-      setConnected(false);
+      setBots(DEMO_BOTS);
+      setSelectedBot(DEMO_BOTS[0]);
+      setChannels([DEMO_CHANNEL]);
+      setChannelEvents(DEMO_CHANNEL_EVENTS);
+      setManagement(demoManagementData());
+      setParts(DEMO_THREADS[DEMO_BOTS[0].name] ?? []);
+      setConnected(true);
       return;
     }
     try {
@@ -594,7 +629,6 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
   }, [marketing]);
 
   useEffect(() => {
-    if (marketing) return;
     void loadBots();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -604,6 +638,40 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
   const submitTurn = useCallback(
     async (message: string) => {
       if (!selectedBot || activeRun || surface.kind === "channel") return;
+      if (marketing) {
+        const full = demoResponseFor(message);
+        setParts((current) => [
+          ...current,
+          { type: "user", text: message },
+          { type: "assistant-text", text: "", streaming: true },
+        ]);
+        setPhase("starting");
+        setRunDetail("Creating a demo run…");
+        setActiveRun({ id: "demo-run" });
+        window.setTimeout(() => {
+          setPhase("running");
+          setRunDetail("Kiro is working in this bot's persistent session.");
+          addTimeline("tool", "filesystem.read · README.md");
+        }, 450);
+        let index = 0;
+        if (demoStreamRef.current) window.clearInterval(demoStreamRef.current);
+        demoStreamRef.current = window.setInterval(() => {
+          index += 3;
+          const text = full.slice(0, index);
+          const streaming = index < full.length;
+          setParts((current) => {
+            const head = current.slice(0, -1);
+            return [...head, { type: "assistant-text", text, streaming }];
+          });
+          if (!streaming) {
+            if (demoStreamRef.current) window.clearInterval(demoStreamRef.current);
+            demoStreamRef.current = null;
+            finishRun("idle", "Run complete");
+            addTimeline("complete", "Run completed");
+          }
+        }, 28);
+        return;
+      }
       setParts((current) => [...current, { type: "user", text: message }]);
       setPhase("starting");
       setRunDetail("Creating a persistent Kiro run…");
@@ -621,11 +689,17 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
         showToast(message2 || "Could not start run", true);
       }
     },
-    [selectedBot, activeRun, surface.kind, finishRun, showToast],
+    [selectedBot, activeRun, surface.kind, finishRun, showToast, marketing, addTimeline],
   );
 
   const cancelRun = useCallback(async () => {
     if (!activeRun) return;
+    if (marketing) {
+      if (demoStreamRef.current) window.clearInterval(demoStreamRef.current);
+      demoStreamRef.current = null;
+      finishRun("idle", "Run cancelled");
+      return;
+    }
     setPhase("stopping");
     setRunDetail("Requesting a clean stop…");
     try {
@@ -635,10 +709,17 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
       setRunDetail("");
       showToast((error as Error).message || "Could not cancel run", true);
     }
-  }, [activeRun, showToast]);
+  }, [activeRun, showToast, marketing, finishRun]);
 
   const decidePermission = useCallback(
     async (id: string, decision: "once" | "reject") => {
+      if (marketing) {
+        setPermissions((current) => current.filter((permission) => permission.id !== id));
+        setParts((current) => current.filter((part) => !(part.type === "approval" && part.id === id)));
+        setPhase("running");
+        setRunDetail("Approval recorded. Continuing the run.");
+        return;
+      }
       const permission = permissions.find((item) => item.id === id);
       try {
         if (permission?.runId && permission.requestId && permission.id.length === 32) {
@@ -663,6 +744,10 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
 
   const guard = useCallback(
     async (action: () => Promise<unknown>, success?: string) => {
+      if (marketing) {
+        showToast("Demo preview — run `uv run kyn serve` locally to use this.", false);
+        return;
+      }
       try {
         await action();
         if (success) showToast(success);
@@ -671,7 +756,7 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
         showToast((error as Error).message, true);
       }
     },
-    [loadManagement, showToast],
+    [loadManagement, showToast, marketing],
   );
 
   const workActions: WorkActions = useMemo(
@@ -716,13 +801,14 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
   );
 
   useEffect(() => {
+    if (marketing) return;
     if ((inspectTab !== "work" && workspace !== "workflows") || !selectedBot) return;
     const timer = window.setInterval(() => {
       void api.delegations().then((plans) => setManagement((c) => ({ ...c, delegations: plans as DelegationPlan[] }))).catch(() => undefined);
       void api.codingExecutions().then((executions) => setManagement((c) => ({ ...c, codingExecutions: executions as CodingExecution[] }))).catch(() => undefined);
     }, 2000);
     return () => window.clearInterval(timer);
-  }, [inspectTab, selectedBot, workspace]);
+  }, [inspectTab, selectedBot, workspace, marketing]);
 
   const changeTab = useCallback(
     (tab: InspectTab) => {
@@ -755,9 +841,13 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
 
   const closeDialog = useCallback(() => setDialog(null), []);
   const doneAndReload = useCallback(() => {
+    if (marketing) {
+      void loadManagement();
+      return;
+    }
     void loadManagement();
     void loadBots();
-  }, [loadManagement, loadBots]);
+  }, [loadManagement, loadBots, marketing]);
 
   const dialogProps = { open: dialog !== null, onClose: closeDialog, bot: selectedBot, bots, onDone: doneAndReload };
 
@@ -774,9 +864,12 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
         unread={unread}
         localLive={localLive}
         connected={connected}
+        connectionLabel={marketing ? "Demo preview" : undefined}
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
-        onNewBot={() => setDialog("bot")}
+        onNewBot={() =>
+          marketing ? showToast("Demo preview — create bots with `uv run kyn bot create`.", false) : setDialog("bot")
+        }
         workspace={workspace}
         onWorkspaceChange={setWorkspace}
       />
@@ -833,6 +926,11 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
               <span className="status-dot" aria-hidden />
               {PHASE_TITLE[phase]}
             </span>
+            {marketing && (
+              <span className="status-pill preview" title="Interactive preview — no live backend">
+                Preview
+              </span>
+            )}
             <button
               type="button"
               className={`icon-btn${inspectOpen ? " active" : ""}`}
@@ -848,6 +946,7 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
           <WorkflowPlayground
             bots={bots}
             plans={management.delegations}
+            demoMode={marketing}
             onRefresh={doneAndReload}
             onStart={(plan) => void guard(() => api.startDelegation(plan.id), "Workflow started.")}
             onCancel={(plan) => void guard(() => api.cancelDelegation(plan.id), "Workflow cancelled.")}
@@ -927,6 +1026,7 @@ type View = "landing" | "engineering" | "console";
 
 function resolveView(): View {
   if (isMarketingDeploy) {
+    if (location.hash.includes("console")) return "console";
     if (location.hash.includes("engineering")) return "engineering";
     return "landing";
   }
@@ -949,13 +1049,6 @@ function AppShell() {
   const { clearToasts } = useToast();
 
   useEffect(() => {
-    if (isMarketingDeploy && location.hash.includes("console")) {
-      history.replaceState(null, "", "#start-local");
-      setView("landing");
-    }
-  }, []);
-
-  useEffect(() => {
     const onHashChange = () => setView(resolveView());
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
@@ -968,14 +1061,6 @@ function AppShell() {
   }, [view, clearToasts]);
 
   const enterConsole = useCallback(() => {
-    if (isMarketingDeploy) {
-      history.replaceState(null, "", "#start-local");
-      setView("landing");
-      requestAnimationFrame(() => {
-        document.getElementById("start-local")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
-      return;
-    }
     history.replaceState(null, "", "#console");
     setView("console");
   }, []);
