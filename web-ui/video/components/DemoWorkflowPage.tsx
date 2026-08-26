@@ -55,8 +55,7 @@ export const DemoWorkflowPage: React.FC<Props> = ({ snapshot, frame, fps }) => {
         localLive={snapshot.planStatus === "running"}
         connected
         open
-        theme="dark"
-        onToggleTheme={noop}
+        onClose={noop}
         onNewBot={noop}
         workspace="workflows"
         onWorkspaceChange={noop}

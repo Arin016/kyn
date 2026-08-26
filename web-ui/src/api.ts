@@ -13,6 +13,23 @@ import type {
 } from "./types";
 import { accessToken, apiBase } from "./lib/deploy";
 
+const MAX_ERROR_CHARS = 240;
+
+function sanitizeApiError(body: string, status: number): string {
+  const trimmed = body.trim();
+  if (!trimmed) return `Request failed (${status})`;
+  const lower = trimmed.slice(0, 64).toLowerCase();
+  if (
+    lower.startsWith("<!doctype") ||
+    lower.startsWith("<html") ||
+    trimmed.includes("<script") ||
+    trimmed.length > 500
+  ) {
+    return "KYN backend is not reachable from this site. Run locally with `uv run kyn serve`.";
+  }
+  return trimmed.length > MAX_ERROR_CHARS ? `${trimmed.slice(0, MAX_ERROR_CHARS)}…` : trimmed;
+}
+
 async function request<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers);
   if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
@@ -28,9 +45,11 @@ async function request<T = unknown>(path: string, options: RequestInit = {}): Pr
   }
   if (!response.ok) {
     const record = data as Record<string, unknown>;
+    const raw =
+      record.detail ?? record.message ?? record.error ?? sanitizeApiError(body, response.status);
     const detail =
-      record.detail ?? record.message ?? record.error ?? `Request failed (${response.status})`;
-    throw new Error(String(detail));
+      typeof raw === "string" ? sanitizeApiError(raw, response.status) : `Request failed (${response.status})`;
+    throw new Error(detail);
   }
   return data as T;
 }

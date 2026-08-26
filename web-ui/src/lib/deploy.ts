@@ -5,6 +5,11 @@ export const apiBase = String(env.VITE_KYN_API_URL ?? "").replace(/\/$/, "");
 
 const TOKEN_KEY = "kyn_access_token";
 
+function marketingHost(): boolean {
+  if (typeof location === "undefined") return false;
+  return /\.vercel\.app$/i.test(location.hostname);
+}
+
 function initTokenFromQuery(): void {
   const params = new URLSearchParams(location.search);
   const token = params.get("token");
@@ -28,8 +33,12 @@ export function accessToken(): string | null {
   return baked ? String(baked) : null;
 }
 
+const marketingFlag = env.VITE_MARKETING_ONLY;
 export const isMarketingDeploy =
-  !apiBase && (env.VITE_MARKETING_ONLY === "true" || env.VERCEL === "1");
+  !apiBase &&
+  (marketingFlag === "true" ||
+    marketingFlag === true ||
+    (env.PROD === true && marketingHost()));
 
 export async function backendReachable(): Promise<boolean> {
   if (isMarketingDeploy) return false;

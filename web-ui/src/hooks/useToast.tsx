@@ -10,12 +10,24 @@ export interface Toast {
 
 interface ToastContextValue {
   showToast: (message: string, isError?: boolean) => void;
+  clearToasts: () => void;
 }
 
-const ToastContext = createContext<ToastContextValue>({ showToast: () => undefined });
+const ToastContext = createContext<ToastContextValue>({
+  showToast: () => undefined,
+  clearToasts: () => undefined,
+});
 
 export function useToast(): ToastContextValue {
   return useContext(ToastContext);
+}
+
+const MAX_TOAST_CHARS = 220;
+
+function trimToast(message: string): string {
+  const text = message.trim();
+  if (text.length <= MAX_TOAST_CHARS) return text;
+  return `${text.slice(0, MAX_TOAST_CHARS)}…`;
 }
 
 export function ToastProvider({ children }: { children: ReactNode }) {
@@ -26,16 +38,18 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     setToasts((current) => current.filter((toast) => toast.id !== id));
   }, []);
 
+  const clearToasts = useCallback(() => setToasts([]), []);
+
   const showToast = useCallback(
     (message: string, isError = false) => {
       const id = nextId.current++;
-      setToasts((current) => [...current.slice(-4), { id, message, isError }]);
+      setToasts((current) => [...current.slice(-4), { id, message: trimToast(message), isError }]);
       window.setTimeout(() => remove(id), 4400);
     },
     [remove],
   );
 
-  const value = useMemo(() => ({ showToast }), [showToast]);
+  const value = useMemo(() => ({ showToast, clearToasts }), [showToast, clearToasts]);
 
   return (
     <ToastContext.Provider value={value}>

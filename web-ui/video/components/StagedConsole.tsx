@@ -70,8 +70,7 @@ export const StagedConsole: React.FC<Props> = ({ snapshot }) => {
         localLive={snapshot.localLive}
         connected
         open
-        theme="dark"
-        onToggleTheme={noop}
+        onClose={noop}
         onNewBot={noop}
         workspace="conversation"
         onWorkspaceChange={noop}

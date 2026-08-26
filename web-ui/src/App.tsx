@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import api from "./api";
 import { wsUrl, useWebSocket } from "./hooks/useWebSocket";
 import { ToastProvider, useToast } from "./hooks/useToast";
-import { useTheme, type Theme } from "./lib/theme";
 import { useStickToBottom } from "./lib/useStickToBottom";
 import { isMarketingDeploy } from "./lib/deploy";
 import EngineeringPage from "./pages/EngineeringPage";
@@ -250,7 +249,7 @@ function RunStream({
 
 function ControlRoom({ onExit }: { onExit: () => void }) {
   const { showToast } = useToast();
-  const [theme, toggleTheme] = useTheme() as [Theme, () => void];
+  const marketing = isMarketingDeploy;
 
   const [bots, setBots] = useState<Bot[]>([]);
   const [selectedBot, setSelectedBot] = useState<Bot | null>(null);
@@ -459,7 +458,11 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
     [surface.kind, surface.id, upsertChannelEvent, finishRun, showToast],
   );
 
-  useWebSocket(useCallback(() => wsUrl("/ws/live"), []), onLiveMessage, setConnected);
+  useWebSocket(
+    useCallback(() => (marketing ? null : wsUrl("/ws/live")), [marketing]),
+    onLiveMessage,
+    setConnected,
+  );
 
   // ---- Data loading ----------------------------------------------------
 
@@ -571,6 +574,10 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
   }, [selectedBot, loadThread, loadManagement, loadInteractions]);
 
   const loadBots = useCallback(async () => {
+    if (marketing) {
+      setConnected(false);
+      return;
+    }
     try {
       const data = await api.listBots();
       const list = normalizeBots(data);
@@ -584,9 +591,10 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
       showToast((error as Error).message || "Could not load bots", true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [marketing]);
 
   useEffect(() => {
+    if (marketing) return;
     void loadBots();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -767,20 +775,29 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
         localLive={localLive}
         connected={connected}
         open={sidebarOpen}
-        theme={theme}
-        onToggleTheme={toggleTheme}
+        onClose={() => setSidebarOpen(false)}
         onNewBot={() => setDialog("bot")}
         workspace={workspace}
         onWorkspaceChange={setWorkspace}
       />
 
       <main className="main">
+        {sidebarOpen && (
+          <button
+            type="button"
+            className="sidebar-backdrop"
+            aria-label="Close sidebar"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
         <header className="header">
           <div className="header-brand">
             <button
               type="button"
               className="hamburger"
               aria-label="Toggle sidebar"
+              aria-pressed={sidebarOpen}
+              aria-expanded={sidebarOpen}
               onClick={() => setSidebarOpen((open) => !open)}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -920,7 +937,23 @@ function resolveView(): View {
 }
 
 export function App() {
+  return (
+    <ToastProvider>
+      <AppShell />
+    </ToastProvider>
+  );
+}
+
+function AppShell() {
   const [view, setView] = useState<View>(resolveView);
+  const { clearToasts } = useToast();
+
+  useEffect(() => {
+    if (isMarketingDeploy && location.hash.includes("console")) {
+      history.replaceState(null, "", "#start-local");
+      setView("landing");
+    }
+  }, []);
 
   useEffect(() => {
     const onHashChange = () => setView(resolveView());
@@ -929,9 +962,10 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    clearToasts();
     const scroller = document.querySelector(".ed") as HTMLElement | null;
     scroller?.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
-  }, [view]);
+  }, [view, clearToasts]);
 
   const enterConsole = useCallback(() => {
     if (isMarketingDeploy) {
@@ -952,12 +986,15 @@ export function App() {
   }, []);
 
   const exitToLanding = useCallback(() => {
-    history.replaceState(null, "", location.pathname);
+    const url = new URL(location.href);
+    url.hash = "";
+    url.search = "";
+    history.replaceState(null, "", `${url.pathname}${url.search}`);
     setView("landing");
   }, []);
 
   return (
-    <ToastProvider>
+    <>
       {view === "console" ? (
         <ControlRoom onExit={exitToLanding} />
       ) : view === "engineering" ? (
@@ -965,7 +1002,7 @@ export function App() {
       ) : (
         <LandingPage onEnterConsole={enterConsole} onOpenEngineering={openEngineering} />
       )}
-    </ToastProvider>
+    </>
   );
 }
 

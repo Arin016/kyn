@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import api from "../../api";
 import type { Bot, DelegationDetail } from "../../types";
 
-const BOARD_WIDTH = 1440;
-const BOARD_HEIGHT = 820;
+const BOARD_WIDTH = 2200;
+const BOARD_HEIGHT = 1400;
 const NODE_WIDTH = 280;
 const NODE_HEIGHT = 230;
 
@@ -141,6 +141,8 @@ export function WorkflowStudio({ activePlan = null, draftKey, onDone, bots, onSt
   const [saving, setSaving] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const pinchDistance = useRef<number | null>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const [viewportSize, setViewportSize] = useState({ w: 960, h: 640 });
   const planKey = activePlan?.plan.id || `draft-${draftKey}`;
   const readOnly = Boolean(activePlan);
 
@@ -154,6 +156,16 @@ export function WorkflowStudio({ activePlan = null, draftKey, onDone, bots, onSt
     setSelectedNodeId(null);
     setNotice(activePlan ? `Loaded ${activePlan.nodes.length} bot${activePlan.nodes.length === 1 ? "" : "s"}. Select a node to inspect its output.` : "Start with a bot, then connect its output to the next bot.");
   }, [planKey, activePlan, bots]);
+
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const update = () => setViewportSize({ w: el.clientWidth, h: el.clientHeight });
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const edges = useMemo(
     () => nodes.flatMap((target) => target.after.map((sourceId) => ({ sourceId, targetId: target.id }))),
@@ -263,7 +275,11 @@ export function WorkflowStudio({ activePlan = null, draftKey, onDone, bots, onSt
 
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
   const nodeOutput = selectedNode?.error || selectedNode?.result;
-  const zoomBy = (delta: number) => setZoom((value) => clamp(value + delta, 0.55, 1.3));
+  const zoomBy = (delta: number) => setZoom((value) => clamp(value + delta, 0.35, 1.45));
+  const boardZoomWidth = BOARD_WIDTH * zoom;
+  const boardZoomHeight = BOARD_HEIGHT * zoom;
+  const scaleWidth = Math.max(boardZoomWidth, viewportSize.w);
+  const scaleHeight = Math.max(boardZoomHeight, viewportSize.h);
   const touchDistance = (touches: React.TouchList) => {
     const [first, second] = [touches.item(0), touches.item(1)];
     return first && second ? Math.hypot(first.clientX - second.clientX, first.clientY - second.clientY) : null;
@@ -292,8 +308,17 @@ export function WorkflowStudio({ activePlan = null, draftKey, onDone, bots, onSt
           {connectingFrom && <strong> Choose the next bot…</strong>}
         </div>
 
-        <div className="flow-viewport" onPointerDown={(event) => { if (event.target === event.currentTarget) setConnectingFrom(null); }} onWheel={(event) => { if (event.ctrlKey || event.metaKey) { event.preventDefault(); zoomBy(event.deltaY < 0 ? 0.06 : -0.06); } }} onTouchStart={(event) => { pinchDistance.current = touchDistance(event.touches); }} onTouchMove={(event) => { const next = touchDistance(event.touches); if (next && pinchDistance.current) { event.preventDefault(); zoomBy((next - pinchDistance.current) / 360); pinchDistance.current = next; } }} onTouchEnd={() => { pinchDistance.current = null; }}>
-          <div className="flow-scale" style={{ width: BOARD_WIDTH * zoom, height: BOARD_HEIGHT * zoom }}>
+        <div
+          ref={viewportRef}
+          className="flow-viewport"
+          style={{ "--flow-zoom": zoom } as CSSProperties}
+          onPointerDown={(event) => { if (event.target === event.currentTarget) setConnectingFrom(null); }}
+          onWheel={(event) => { if (event.ctrlKey || event.metaKey) { event.preventDefault(); zoomBy(event.deltaY < 0 ? 0.06 : -0.06); } }}
+          onTouchStart={(event) => { pinchDistance.current = touchDistance(event.touches); }}
+          onTouchMove={(event) => { const next = touchDistance(event.touches); if (next && pinchDistance.current) { event.preventDefault(); zoomBy((next - pinchDistance.current) / 360); pinchDistance.current = next; } }}
+          onTouchEnd={() => { pinchDistance.current = null; }}
+        >
+          <div className="flow-scale" style={{ width: scaleWidth, height: scaleHeight, minWidth: "100%", minHeight: "100%" }}>
             <div className="flow-canvas" style={{ width: BOARD_WIDTH, height: BOARD_HEIGHT, transform: `scale(${zoom})` }}>
               <svg className="flow-edges" width={BOARD_WIDTH} height={BOARD_HEIGHT} aria-hidden="true">
                 <defs>

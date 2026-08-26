@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import type { Channel, ChannelEvent, Surface } from "../types";
-import type { Theme } from "../lib/theme";
 import { KiroGlyph } from "./KiroGlyph";
 
 interface Props {
@@ -15,8 +14,7 @@ interface Props {
   localLive: boolean;
   connected: boolean;
   open: boolean;
-  theme: Theme;
-  onToggleTheme: () => void;
+  onClose: () => void;
   onNewBot: () => void;
   workspace: "conversation" | "workflows";
   onWorkspaceChange: (workspace: "conversation" | "workflows") => void;
@@ -47,8 +45,7 @@ export function Sidebar({
   localLive,
   connected,
   open,
-  theme,
-  onToggleTheme,
+  onClose,
   onNewBot,
   workspace,
   onWorkspaceChange,
@@ -68,8 +65,20 @@ export function Sidebar({
     <aside className={`sidebar${open ? " is-open" : " collapsed"}`} aria-label="Bots and channels">
       <div className="sidebar-inner">
         <div className="sidebar-top">
-          <KiroGlyph className="sidebar-brand-mark" size={24} />
-          <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--fg-muted)" }}>KYN</span>
+          <div className="sidebar-brand">
+            <KiroGlyph className="sidebar-brand-mark" size={24} />
+            <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--fg-muted)" }}>KYN</span>
+          </div>
+          <button
+            type="button"
+            className="sidebar-close"
+            aria-label="Close sidebar"
+            onClick={onClose}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+              <path d="M15 6l-6 6 6 6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
         </div>
         <input
           className="sidebar-search"
@@ -159,9 +168,6 @@ export function Sidebar({
 
         <div className="sidebar-footer">
           <span>{connected ? "Control plane online" : "Offline"}</span>
-          <button type="button" className="theme-toggle" onClick={onToggleTheme} aria-label="Toggle color theme">
-            {theme === "dark" ? "Light" : "Dark"}
-          </button>
         </div>
       </div>
     </aside>
