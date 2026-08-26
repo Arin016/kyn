@@ -22,7 +22,7 @@ const PERSONAS: Persona[] = [
     role: "The Reviewer",
     outcome: "Gives every change a clean second look.",
     body:
-      "A separate Kiro inspects the result with fresh context and its own policy. If the reviewer changes the work, Kiro Bot catches it. The final handoff still belongs to you.",
+      "A separate Kiro inspects the result with fresh context and its own policy. If the reviewer changes the work, KYN catches it. The final handoff still belongs to you.",
     detail: "Separate context · mutation detection · human decision",
   },
   {
@@ -36,7 +36,7 @@ const PERSONAS: Persona[] = [
     role: "The Operator",
     outcome: "Owns the checks that should not depend on memory.",
     body:
-      "Give one agent the recurring job: watch a queue, prepare a digest, or inspect a repo on a cadence. Kiro Bot remembers what is due and recovers accepted work after a restart.",
+      "Give one agent the recurring job: watch a queue, prepare a digest, or inspect a repo on a cadence. KYN remembers what is due and recovers accepted work after a restart.",
     detail: "One-time or repeating · durable schedule · visible history",
   },
   {
@@ -71,7 +71,7 @@ const PRODUCT_PILLARS = [
     eyebrow: "Keep the thread",
     title: "One prompt ends. The job does not have to.",
     body:
-      "Kiro Bot gives every agent a durable identity and conversation. Come back tomorrow, switch from browser to phone, or resume after a restart without rebuilding the working context from zero.",
+      "KYN gives every agent a durable identity and conversation. Come back tomorrow, switch from browser to phone, or resume after a restart without rebuilding the working context from zero.",
   },
   {
     eyebrow: "Run a roster",
@@ -100,9 +100,9 @@ const FAQS = [
       "Yes. A governed built-in control tool can create, inspect, start, and cancel durable team workflows from the conversation. It can also call a different named bot for one focused result. The same graph can be composed in the Workflow playground, which keeps saved plans in a rail, supports gesture zoom, validates connections, and shows each bot’s recorded output.",
   },
   {
-    question: "Is Kiro Bot another coding model?",
+    question: "Is KYN another coding model?",
     answer:
-      "No. Kiro remains the agentic engine that reasons, writes code, and uses tools. Kiro Bot is the independent local control plane that adds durable agents, channels, schedules, coordination, governance, and verified work around Kiro's ACP interface.",
+      "No. Kiro remains the agentic engine that reasons, writes code, and uses tools. KYN is the independent local control plane that adds durable agents, channels, schedules, coordination, governance, and verified work around Kiro's ACP interface.",
   },
   {
     question: "Does it keep working when my laptop is closed?",
@@ -110,7 +110,7 @@ const FAQS = [
       "Not in the current local-first build. The daemon and Kiro CLI run on a machine you control, so that machine must remain online for background routines and remote channels. A remote deployment is possible, but authentication and network hardening are your responsibility today.",
   },
   {
-    question: "Can Kiro Bot merge or publish code for me?",
+    question: "Can KYN merge or publish code for me?",
     answer:
       "Not today. The verified coding lifecycle stops at a human-approved handoff after isolated implementation, deterministic checks, bounded repair, and independent review. It does not push, open a pull request, merge, or publish on its own.",
   },
@@ -189,13 +189,13 @@ export default function LandingPage({ onEnterConsole, onOpenEngineering }: Props
             onClick={() => {
               document.querySelector(".ed")?.scrollTo({ top: 0, behavior: "smooth" });
             }}
-            aria-label="Kiro Bot — home"
+            aria-label="KYN — home"
           >
             <KiroGlyph className="glyph" size={26} />
-            Kiro Bot
+            KYN
           </button>
           <nav className="ed-nav-links" aria-label="Primary">
-            <button type="button" onClick={() => scrollTo("why")}>Why Kiro Bot</button>
+            <button type="button" onClick={() => scrollTo("why")}>Why KYN</button>
             <button type="button" onClick={() => scrollTo("roster")}>Jobs</button>
             <button type="button" onClick={onOpenEngineering}>Engineering</button>
             <button type="button" className="ed-btn ed-btn-primary" onClick={onEnterConsole}>
@@ -218,7 +218,7 @@ export default function LandingPage({ onEnterConsole, onOpenEngineering }: Props
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
             >
-              Persistent agents for Kiro
+              Persistent agents, orchestrated
             </motion.p>
             <motion.h1
               className="ed-hero-h1"
@@ -226,7 +226,7 @@ export default function LandingPage({ onEnterConsole, onOpenEngineering }: Props
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.7, delay: 0.06, ease: [0.22, 1, 0.36, 1] }}
             >
-              Put Kiro to work
+              KYN
               <br />
               <span className="ed-accent-word">beyond the terminal.</span>
             </motion.h1>
@@ -280,11 +280,11 @@ export default function LandingPage({ onEnterConsole, onOpenEngineering }: Props
         <section id="why" className="ed-section" style={{ paddingTop: 0 }}>
           <div className="ed-container">
             <Reveal>
-              <p className="ed-eyebrow">Why Kiro Bot</p>
+              <p className="ed-eyebrow">Why KYN</p>
               <h2 className="ed-h2">The agent is only half the product.</h2>
               <p className="ed-body ed-body-lead">
                 Real work lasts longer than a prompt. It crosses repos, channels, reviews, and
-                days. Kiro Bot supplies the durable system around Kiro so you are not the queue,
+                days. KYN supplies the durable system around Kiro so you are not the queue,
                 scheduler, memory, and approval router yourself.
               </p>
             </Reveal>
@@ -333,10 +333,10 @@ export default function LandingPage({ onEnterConsole, onOpenEngineering }: Props
             <Reveal>
               <p className="ed-eyebrow">The division of work</p>
               <h2 className="ed-h2">
-                Kiro does the work. Kiro Bot keeps it moving.
+                Kiro does the work. KYN keeps it moving.
               </h2>
               <p className="ed-body" style={{ marginTop: "1.75rem", fontSize: "1.125rem" }}>
-                Kiro remains the reasoning and tool-use engine. Kiro Bot adds the operating layer
+                Kiro remains the reasoning and tool-use engine. KYN adds the operating layer
                 around it: identity, memory, queues, schedules, channels, coordination, isolated
                 workspaces, approvals, and evidence. It is built for work that should survive the
                 chat window without surrendering the final decision.
@@ -360,7 +360,7 @@ export default function LandingPage({ onEnterConsole, onOpenEngineering }: Props
               <p className="ed-eyebrow">Start local</p>
               <h2 className="ed-h2">Your first agent is three commands away.</h2>
               <p className="ed-body ed-body-lead">
-                Kiro Bot runs against the Kiro CLI you already use and binds to your machine by
+                KYN runs against the Kiro CLI you already use and binds to your machine by
                 default. Create a named agent, open the control room, and hand it a real job.
               </p>
             </Reveal>
@@ -438,7 +438,7 @@ $ `}<span className="cmd">uv run kiro-bot serve</span>{`   `}<span className="cm
             <div className="ed-footer-col">
               <div className="ed-footer-mark">
                 <KiroGlyph className="glyph" size={22} />
-                Kiro Bot
+                KYN
               </div>
               <p className="ed-footer-tag">
                 The local control plane for persistent Kiro agents, recurring work, and governed
@@ -449,7 +449,7 @@ $ `}<span className="cmd">uv run kiro-bot serve</span>{`   `}<span className="cm
               <p className="ed-eyebrow">Product</p>
               <ul>
                 <li><button type="button" onClick={onEnterConsole}>Console</button></li>
-                <li><button type="button" onClick={() => scrollTo("why")}>Why Kiro Bot</button></li>
+                <li><button type="button" onClick={() => scrollTo("why")}>Why KYN</button></li>
                 <li><button type="button" onClick={() => scrollTo("roster")}>Jobs</button></li>
                 <li><button type="button" onClick={onOpenEngineering}>How it works</button></li>
               </ul>

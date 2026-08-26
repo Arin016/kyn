@@ -1,6 +1,6 @@
-# Kiro Bot brand mark
+# KYN brand mark
 
-The Kiro Bot mark is the **night ghost**: a dark, agent-like silhouette edged in electric violet. The silhouette is the signature; it never carries a letter or word inside its body.
+The KYN mark is the **night ghost**: a dark, agent-like silhouette edged in electric violet. The silhouette is the signature; it never carries a letter or word inside its body.
 
 It combines the approachable ghost language from the supplied references with the product's local-first, dark control-room identity. The result is intentionally not a white Kiro ghost pasted onto a purple square.
 

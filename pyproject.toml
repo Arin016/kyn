@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "kiro-bot"
 version = "0.1.0"
-description = "A persistent local bot and orchestration layer for AWS Kiro over ACP"
+description = "KYN — persistent local agents and orchestration on Kiro ACP"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }

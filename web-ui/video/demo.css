@@ -1,0 +1,92 @@
+/* Remotion stage overrides — keep product tokens, force composition geometry. */
+
+.demo-stage {
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-ui);
+}
+
+.demo-stage .app {
+  height: 1080px;
+  max-height: 1080px;
+  width: 1920px;
+  grid-template-columns: 260px minmax(0, 1fr) auto;
+}
+
+.demo-stage .sidebar {
+  width: 260px;
+  min-width: 260px;
+}
+
+.demo-stage .sidebar.collapsed {
+  width: 260px;
+}
+
+.demo-stage .thread-scroll {
+  height: auto;
+  flex: 1;
+}
+
+.demo-stage .main {
+  height: 1080px;
+}
+
+.demo-stage .inspect {
+  width: 320px;
+  min-width: 320px;
+  position: relative;
+}
+
+.demo-stage .hamburger {
+  display: none;
+}
+
+.demo-stage .panel-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+}
+
+.demo-stage .panel-tabs button {
+  border: 0;
+  border-radius: 999px;
+  padding: 6px 4px;
+  color: var(--fg-faint);
+  background: transparent;
+  font-size: 12px;
+}
+
+.demo-stage .panel-tabs button[aria-selected="true"],
+.demo-stage .panel-tabs button[aria-selected] {
+  color: var(--fg);
+  background: var(--bg-raised);
+}
+
+.demo-stage textarea:disabled,
+.demo-stage textarea[readonly] {
+  opacity: 1;
+  color: var(--fg);
+}
+
+/* Kill infinite CSS animations that fight Remotion’s frame model. */
+.demo-stage .streaming-caret,
+.demo-stage .pulse-dot.on,
+.demo-stage .status-dot,
+.demo-stage .side-item-mark.live,
+.demo-stage .reasoning-live-dot {
+  animation: none !important;
+}
+
+.demo-stage .pulse-dot.on,
+.demo-stage .side-item-mark.live,
+.demo-stage .reasoning-live-dot {
+  opacity: 1;
+  background: var(--success);
+}

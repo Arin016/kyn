@@ -341,7 +341,7 @@ class BotWorker:
 
 
 class Engine:
-    """Long-running, in-memory run coordinator for persistent Kiro bots.
+    """Long-running, in-memory run coordinator for persistent KYN bots.
 
     Each bot gets exactly one worker and therefore one active turn at a time.
     Workers are independent, so separate bots can run concurrently. Completed
@@ -539,7 +539,7 @@ class Engine:
         except OSError as exc:
             os.close(descriptor)
             raise RuntimeError(
-                "another Kiro Bot controller is already active for this data store"
+                "another KYN controller is already active for this data store"
             ) from exc
         self._store_lock_fd = descriptor
 

@@ -13,7 +13,7 @@ from .store import Bot, Store
 
 
 def parser() -> argparse.ArgumentParser:
-    root = argparse.ArgumentParser(prog="kiro-bot", description="Persistent local bots on Kiro")
+    root = argparse.ArgumentParser(prog="kiro-bot", description="KYN — persistent local agents on Kiro")
     commands = root.add_subparsers(dest="command", required=True)
 
     bot = commands.add_parser("bot", help="manage named bots")

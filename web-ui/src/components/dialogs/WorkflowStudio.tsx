@@ -330,7 +330,7 @@ export function WorkflowStudio({ activePlan = null, draftKey, onDone, bots, onSt
                     onPointerCancel={() => setDrag(null)}
                   >
                     <span className="flow-node-index">{String(index + 1).padStart(2, "0")}</span>
-                    <span className="flow-node-kind">Kiro bot</span>
+                    <span className="flow-node-kind">KYN bot</span>
                     <span className="flow-node-grip" aria-hidden>⠿</span>
                     {!readOnly && <button type="button" className="flow-node-remove" aria-label={`Remove node ${index + 1}`} onClick={() => removeNode(node.id)}>×</button>}
                   </header>

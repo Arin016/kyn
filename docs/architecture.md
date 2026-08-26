@@ -26,7 +26,7 @@ both `cwd` and `mcpServers`, even when the server list is empty.
 
 ## Where orchestration lives
 
-Kiro owns model calls and tool execution. Kiro Bot owns:
+Kiro owns model calls and tool execution. KYN owns:
 
 - bot identity and configuration;
 - session-to-bot mapping and resumption;

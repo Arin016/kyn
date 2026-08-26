@@ -30,7 +30,7 @@ def make_repo(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
     git(repo, "init")
-    git(repo, "config", "user.name", "Kiro Bot Test")
+    git(repo, "config", "user.name", "KYN Test")
     git(repo, "config", "user.email", "kiro@example.test")
     (repo / "value.txt").write_text("source\n", encoding="utf-8")
     git(repo, "add", "value.txt")

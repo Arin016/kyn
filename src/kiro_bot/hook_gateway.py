@@ -53,7 +53,7 @@ def create_hook_gateway(
     if not 1 <= int(upstream_port) <= 65535:
         raise ValueError("upstream port must be between 1 and 65535")
     relay = forward or _forwarder(upstream_host, int(upstream_port))
-    app = FastAPI(title="Kiro Bot Hooks Gateway", docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(title="KYN Hooks Gateway", docs_url=None, redoc_url=None, openapi_url=None)
 
     @app.get("/health")
     async def health() -> dict[str, str]:

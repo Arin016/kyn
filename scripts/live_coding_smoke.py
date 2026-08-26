@@ -33,7 +33,7 @@ async def main() -> None:
         repo = root / "source"
         repo.mkdir()
         git(repo, "init")
-        git(repo, "config", "user.name", "Kiro Bot Live")
+        git(repo, "config", "user.name", "KYN Live")
         git(repo, "config", "user.email", "kiro-bot@example.test")
         (repo / "SMOKE.txt").write_text("before\n", encoding="utf-8")
         git(repo, "add", "SMOKE.txt")

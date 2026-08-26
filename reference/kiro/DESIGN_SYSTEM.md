@@ -1,6 +1,6 @@
 # Kiro visual reference
 
-Measured from the rendered `https://kiro.dev/` homepage on 26 August 2026. These are design observations, not copied source or brand assets. Kiro Bot keeps its own identity and product content.
+Measured from the rendered `https://kiro.dev/` homepage on 26 August 2026. These are design observations, not copied source or brand assets. KYN keeps its own identity and product content.
 
 ## Direction
 

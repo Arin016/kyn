@@ -23,7 +23,7 @@ def ensure_internal_control(store: Store, plugins: PluginRegistry) -> None:
 
     desired = Plugin(
         id=CONTROL_PLUGIN_ID,
-        name="Kiro Bot Control",
+        name="KYN Control",
         transport="stdio",
         command=sys.executable,
         args=("-m", "kiro_bot.control_mcp"),

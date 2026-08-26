@@ -17,7 +17,7 @@ def test_capability_contract_states_remote_and_runtime_boundaries() -> None:
 
     assert "WhatsApp" in rendered
     assert "Telegram" in rendered
-    assert "host machine and Kiro Bot daemon are" in rendered
+    assert "host machine and KYN daemon are" in rendered
     assert "separate machines" in rendered
     assert "Never say a team plan was created" in rendered
     assert "create_team_plan" in rendered

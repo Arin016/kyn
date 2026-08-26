@@ -18,7 +18,7 @@ PROTOCOL_VERSION = "2025-06-18"
 TOOLS = [
     {
         "name": "list_bots",
-        "description": "List durable named Kiro Bots available for team plans and delegation.",
+        "description": "List durable named KYNs available for team plans and delegation.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
     {

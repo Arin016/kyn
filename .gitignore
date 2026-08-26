@@ -15,3 +15,4 @@ build/
 .coverage
 htmlcov/
 reference/kiro/screenshots/
+web-ui/out/

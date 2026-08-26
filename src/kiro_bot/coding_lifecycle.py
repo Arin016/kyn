@@ -1,4 +1,4 @@
-"""Durable, isolated coding executions composed from Kiro Bot primitives.
+"""Durable, isolated coding executions composed from KYN primitives.
 
 The lifecycle deliberately stops at a human handoff.  Agents may build,
 repair, and review inside one detached worktree, while the harness owns the

@@ -1,18 +1,18 @@
-# Kiro Bot
+# KYN
 
-<img src="web-ui/public/brand-mark.svg" alt="Kiro Bot night ghost logo" width="88" />
+<img src="web-ui/public/brand-mark.svg" alt="KYN night ghost logo" width="88" />
 
-**Put Kiro to work beyond the terminal.**
+**Beyond the terminal.**
 
-Kiro Bot is the local control plane for persistent Kiro agents, recurring work,
+KYN is the local control plane for persistent Kiro agents, recurring work,
 and governed coding handoffs. Create named agents with clear jobs, reach them
 from your browser or phone, run several at once, and keep consequential actions
 behind deterministic boundaries.
 
-![Kiro Bot control room](docs/screenshots/kiro-bot-home-desktop.png)
+![KYN control room](docs/screenshots/kiro-bot-home-desktop.png)
 
-Kiro remains the agentic engine that reasons, writes code, and uses tools. Kiro
-Bot launches `kiro-cli acp` and owns the durable product layer around it:
+Kiro remains the agentic engine that reasons, writes code, and uses tools. KYN
+launches `kiro-cli acp` and owns the durable product layer around it:
 identity, conversations, memory, queues, channels, schedules, approvals,
 workspaces, and orchestration.
 
@@ -107,6 +107,18 @@ enabled. The repository includes a dependency-free fallback control room under
 `web/`; building `web-ui/` adds the full React landing, engineering, and console
 experience under `web/dist/`.
 
+### Product demo video (Remotion)
+
+A 60-second ProductDemo composition lives under `web-ui/video/`. It reuses the
+React console chrome (Sidebar, Thread, Live inspect, design tokens) with staged
+state, cursor interactions, and camera moves.
+
+```bash
+npm --prefix web-ui install
+npm --prefix web-ui run video          # Remotion Studio preview
+npm --prefix web-ui run video:render   # writes web-ui/out/kiro-bot-demo.mp4
+```
+
 The **Coding** panel starts and monitors verified patch executions. Select the
 builder bot, choose a separate reviewer, describe the task, and provide direct
 argument-vector checks such as `tests: python, -m, pytest, -q`. A ready result
@@ -178,7 +190,7 @@ the complete schedule-to-model path against your signed-in local Kiro CLI, run:
 uv run python scripts/live_scheduler_smoke.py
 ```
 
-This creates an isolated temporary Kiro Bot database, fires one due routine,
+This creates an isolated temporary KYN database, fires one due routine,
 waits for the real ACP turn, verifies its answer and audit records, and removes
 the temporary database when finished.
 

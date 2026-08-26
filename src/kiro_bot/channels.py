@@ -1,4 +1,4 @@
-"""Durable, authenticated external-channel ingestion for Kiro Bot.
+"""Durable, authenticated external-channel ingestion for KYN.
 
 Provider adapters normalize untrusted webhook payloads into a small common
 event.  The gateway owns deduplication, bounded source-thread context, run

@@ -870,7 +870,7 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
               : selectedBot?.model || selectedBot?.agent || selectedBot?.cwd || "Select a bot to begin"
           }
           mirrorNote={surface.kind === "channel"}
-          placeholder={selectedBot ? "Message Kiro…" : "Select a bot to begin"}
+          placeholder={selectedBot ? "Message bot…" : "Select a bot to begin"}
           onSubmit={(message) => void submitTurn(message)}
           onStop={() => void cancelRun()}
         />

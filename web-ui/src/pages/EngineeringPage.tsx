@@ -236,10 +236,10 @@ export default function EngineeringPage({ onEnterConsole, onBackToLanding }: Pro
             type="button"
             className="ed-wordmark"
             onClick={onBackToLanding}
-            aria-label="Kiro Bot — home"
+            aria-label="KYN — home"
           >
             <KiroGlyph className="glyph" size={26} />
-            Kiro Bot
+            KYN
           </button>
           <nav className="ed-nav-links" aria-label="Engineering">
             <button type="button" onClick={() => scrollTo("protocol")}>Protocol</button>
@@ -278,7 +278,7 @@ export default function EngineeringPage({ onEnterConsole, onBackToLanding }: Pro
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.16 }}
           >
-            Kiro Bot does not replace the Kiro agent harness. It gives Kiro a durable identity,
+            KYN does not replace the Kiro agent harness. It gives Kiro a durable identity,
             routes real work to it, preserves the state around each job, and enforces the boundaries
             the model cannot be trusted to remember on its own.
           </motion.p>
@@ -291,10 +291,10 @@ export default function EngineeringPage({ onEnterConsole, onBackToLanding }: Pro
               <p className="ed-eyebrow">Built on Kiro</p>
               <h2 className="ed-h2">One Kiro runtime. A durable identity for every job.</h2>
               <p className="ed-body ed-body-lead">
-                The product starts with the official programmatic surface. Kiro Bot launches{" "}
+                The product starts with the official programmatic surface. KYN launches{" "}
                 <code className="ed-inline-code">kiro-cli acp</code> and speaks newline-delimited
                 JSON-RPC 2.0 over stdin and stdout. Kiro keeps ownership of reasoning, models, and
-                tools; Kiro Bot owns the agents, queues, channels, policies, and durable outcomes
+                tools; KYN owns the agents, queues, channels, policies, and durable outcomes
                 around those sessions.
               </p>
             </Reveal>
@@ -339,7 +339,7 @@ export default function EngineeringPage({ onEnterConsole, onBackToLanding }: Pro
                   <p className="ed-eyebrow">What stays with Kiro</p>
                   <p className="ed-body">
                     Model calls, context assembly, planning, tool execution, and the actual agentic
-                    work. That separation means Kiro Bot can improve the product experience without
+                    work. That separation means KYN can improve the product experience without
                     pretending to be a second agent harness.
                   </p>
                 </div>
@@ -469,7 +469,7 @@ export default function EngineeringPage({ onEnterConsole, onBackToLanding }: Pro
             <div className="ed-footer-col">
               <div className="ed-footer-mark">
                 <KiroGlyph className="glyph" size={22} />
-                Kiro Bot
+                KYN
               </div>
               <p className="ed-footer-tag">
                 An independent orchestration layer around Kiro's Agent Client Protocol. Kiro

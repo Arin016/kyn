@@ -1,6 +1,6 @@
 # External channels
 
-External channels let a named Kiro Bot receive work from another system while
+External channels let a named KYN receive work from another system while
 keeping the source conversation attached. Every accepted provider event passes
 through the same Engine as browser and CLI turns, so governance, quotas,
 permissions, persistence and cancellation still apply.

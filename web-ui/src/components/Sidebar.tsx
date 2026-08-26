@@ -69,7 +69,7 @@ export function Sidebar({
       <div className="sidebar-inner">
         <div className="sidebar-top">
           <KiroGlyph className="sidebar-brand-mark" size={24} />
-          <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--fg-muted)" }}>Kiro Bot</span>
+          <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--fg-muted)" }}>KYN</span>
         </div>
         <input
           className="sidebar-search"

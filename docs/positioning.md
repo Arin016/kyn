@@ -1,14 +1,14 @@
-# Kiro Bot positioning
+# KYN positioning
 
 This document is the source of truth for product language. It keeps the public story outcome-led while preventing the marketing from outrunning the prototype.
 
 ## One-line position
 
-Kiro Bot is the local control plane for persistent Kiro agents, recurring work, and governed coding handoffs.
+KYN is the local control plane for persistent Kiro agents, recurring work, and governed coding handoffs.
 
 ## Core promise
 
-Put Kiro to work beyond a single terminal session. Give named agents clear jobs, reach them from the surfaces where work arrives, let several move concurrently, and keep consequential decisions behind deterministic boundaries.
+Put agents to work beyond a single terminal session. Give named agents clear jobs, reach them from the surfaces where work arrives, let several move concurrently, and keep consequential decisions behind deterministic boundaries.
 
 ## Who it is for
 
@@ -64,7 +64,7 @@ Every consequential gate is an individual durable decision. There is no blanket 
 - Lead with the job and finished outcome.
 - Explain the technical mechanism only as proof.
 - Prefer short, concrete sentences.
-- Use “agent” for the general concept and “bot” when referring to a named Kiro Bot identity or UI object.
+- Use “agent” for the general concept and “bot” when referring to a named KYN identity or UI object.
 - Say exactly where human approval occurs.
 - Never use “24/7,” “fully autonomous,” “enterprise-ready,” “exactly once,” or “works while your laptop is closed” for the current build.
 

@@ -1,4 +1,4 @@
-"""HTTP and WebSocket control plane for Kiro Bot.
+"""HTTP and WebSocket control plane for KYN.
 
 FastAPI is intentionally an optional dependency of the core package.  Importing
 this module remains safe without it; :func:`create_app` explains how to enable
@@ -472,7 +472,7 @@ def create_app(
                             if engine_start_attempted:
                                 await _maybe_await(active_engine.close())
 
-    app = FastAPI(title="Kiro Bot", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="KYN", version="0.1.0", lifespan=lifespan)
     # State is also populated immediately for ASGI hosts that inspect the app
     # before entering its lifespan.
     app.state.store = active_store
@@ -499,7 +499,7 @@ def create_app(
     async def unexpected_error(_request: Request, exc: Exception) -> JSONResponse:
         # Prompts, local paths and provider details can occur in exceptions.
         # Preserve those only in server logs, never in the wire response.
-        _logger.exception("Unhandled Kiro Bot API error", exc_info=exc)
+        _logger.exception("Unhandled KYN API error", exc_info=exc)
         return JSONResponse(
             status_code=500,
             content={"error": "internal_error", "detail": "The request could not be completed"},
@@ -804,7 +804,7 @@ def create_app(
     @app.delete("/api/plugins/{plugin_id}")
     async def delete_plugin(plugin_id: str) -> dict[str, Any]:
         if plugin_id == CONTROL_PLUGIN_ID:
-            raise HTTPException(status_code=409, detail="plugin is managed by Kiro Bot")
+            raise HTTPException(status_code=409, detail="plugin is managed by KYN")
         active_plugins.delete_plugin(plugin_id)
         return {"deleted": True, "id": plugin_id}
 
@@ -821,7 +821,7 @@ def create_app(
     async def bind_plugin(name: str, plugin_id: str, body: BindPluginBody) -> dict[str, Any]:
         _require_bot(active_store, name)
         if plugin_id == CONTROL_PLUGIN_ID:
-            raise HTTPException(status_code=409, detail="plugin is managed by Kiro Bot")
+            raise HTTPException(status_code=409, detail="plugin is managed by KYN")
         binding = active_plugins.bind_plugin(
             name,
             plugin_id,
@@ -837,7 +837,7 @@ def create_app(
     async def unbind_plugin(name: str, plugin_id: str) -> dict[str, Any]:
         _require_bot(active_store, name)
         if plugin_id == CONTROL_PLUGIN_ID:
-            raise HTTPException(status_code=409, detail="plugin is managed by Kiro Bot")
+            raise HTTPException(status_code=409, detail="plugin is managed by KYN")
         active_plugins.unbind_plugin(name, plugin_id)
         return {"deleted": True, "bot_name": name, "plugin_id": plugin_id}
 
@@ -1194,7 +1194,7 @@ def create_app(
             )
             await websocket.close(code=1000)
         except Exception as exc:
-            _logger.exception("Kiro Bot WebSocket stream failed", exc_info=exc)
+            _logger.exception("KYN WebSocket stream failed", exc_info=exc)
             await websocket.send_json(
                 {
                     "type": "error",
