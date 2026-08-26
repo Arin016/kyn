@@ -54,9 +54,6 @@ interface Props {
   workActions: WorkActions;
   safetyActions: SafetyActions;
   hasBot: boolean;
-  trustAll: boolean;
-  onToggleTrustAll: (value: boolean) => void;
-  onApproveAll: () => void;
 }
 
 export function InspectPanel({
@@ -74,9 +71,6 @@ export function InspectPanel({
   workActions,
   safetyActions,
   hasBot,
-  trustAll,
-  onToggleTrustAll,
-  onApproveAll,
 }: Props) {
   return (
     <AnimatePresence>
@@ -121,9 +115,6 @@ export function InspectPanel({
                 permissions={permissions}
                 onDecide={onDecide}
                 timeline={timeline}
-                trustAll={trustAll}
-                onToggleTrustAll={onToggleTrustAll}
-                onApproveAll={onApproveAll}
               />
             ) : tab === "work" ? (
               <WorkTab

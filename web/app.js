@@ -406,6 +406,7 @@ async function selectBot(bot, shouldPush = true) {
     renderHistory(data);
   } catch (error) { renderHistory([]); const node = make("div", "error-state"); node.append(make("h2", "", "Couldn’t load this conversation")); node.append(make("p", "", error.message)); const retry = make("button", "retry-button", "Try again"); retry.addEventListener("click", () => selectBot(bot, false)); node.append(retry); elements.conversation.querySelector(".conversation-inner").append(node); }
   loadManagement();
+  loadInteractions();
 }
 
 function csv(value) { return String(value || "").split(",").map((item) => item.trim()).filter(Boolean); }
@@ -600,6 +601,25 @@ async function loadManagement() {
   } catch (error) { toast(error.message || "Could not load bot controls", true); }
 }
 
+async function loadInteractions() {
+  if (!state.bot) return;
+  try {
+    const name = encodeURIComponent(botName(state.bot));
+    const items = await request(`/api/interactions?bot_name=${name}&status=pending`);
+    const live = new Set(items.map((item) => item.id));
+    for (const item of items) showPermission({ ...item, interaction_id: item.id });
+    for (const id of [...state.permissions.keys()]) {
+      if (live.has(id)) continue;
+      state.permissions.delete(id);
+      elements.permissionList.querySelector(`[data-permission-id="${CSS.escape(id)}"]`)?.remove();
+      document.querySelector(`[data-thread-permission="${CSS.escape(id)}"]`)?.remove();
+    }
+    elements.permissionSection.hidden = !elements.permissionList.children.length;
+  } catch {
+    // The active run stream remains the fallback while the daemon reloads.
+  }
+}
+
 function eventId(event) { return Number(event?.id || event?.sequence || event?.offset || 0); }
 function parseEvent(payload) {
   if (typeof payload === "string") { try { return JSON.parse(payload); } catch { return { kind: "text", text: payload }; } }
@@ -633,7 +653,7 @@ function receiveEvent(payload) {
     node.append(make("span", "streaming-cursor")); scrollToBottom();
   } else if (kind === "thinking" || kind === "agent_thought_chunk") {
     if (text) addMessage(text, "thinking", state.messages.get("assistant")?.parentElement || addTurn("REASONING"));
-  } else if (kind === "permission") {
+  } else if (kind === "permission" || kind === "interaction_required") {
     setRunState("waiting", "Approval needed", event.title || "Kiro needs permission to continue.");
     showPermission(event);
     addTimeline("permission", event.title || "Permission requested");
@@ -649,7 +669,7 @@ function receiveEvent(payload) {
 }
 
 function showPermission(event) {
-  const id = String(event.request_id || event.requestId || event.id || crypto.randomUUID());
+  const id = String(event.interaction_id || event.request_id || event.requestId || event.id || crypto.randomUUID());
   if (state.permissions.has(id)) return;
   state.permissions.set(id, event); elements.permissionSection.hidden = false;
   const card = make("article", "permission-card"); card.dataset.permissionId = id;
@@ -670,10 +690,17 @@ function showPermission(event) {
 }
 
 async function decidePermission(id, decision) {
-  if (!state.run) return;
+  const permission = state.permissions.get(id) || {};
   const body = { decision: decision === "allow_once" ? "once" : decision };
   try {
-    await request(`/api/runs/${encodeURIComponent(state.run.id)}/permissions/${encodeURIComponent(id)}`, { method: "POST", body: JSON.stringify(body) });
+    if (/^[a-f0-9]{32}$/.test(id) && (permission.interaction_id || permission.run_id)) {
+      await request(`/api/interactions/${encodeURIComponent(id)}/decide`, { method: "POST", body: JSON.stringify(body) });
+    } else if (state.run) {
+      const requestId = permission.request_id || permission.requestId || id;
+      await request(`/api/runs/${encodeURIComponent(state.run.id)}/permissions/${encodeURIComponent(requestId)}`, { method: "POST", body: JSON.stringify(body) });
+    } else {
+      throw new Error("This approval is no longer attached to an active run.");
+    }
     state.permissions.delete(id); elements.permissionList.querySelector(`[data-permission-id="${CSS.escape(id)}"]`)?.remove();
     elements.permissionSection.hidden = !elements.permissionList.children.length;
     document.querySelector(`[data-thread-permission="${CSS.escape(id)}"]`)?.remove();
@@ -932,6 +959,7 @@ setInterval(() => {
     refreshCodingExecutions();
   }
 }, 2000);
+setInterval(() => { void loadInteractions(); }, 2500);
 $("#plugin-transport").addEventListener("change", (event) => { const http = event.target.value === "http"; $("#stdio-fields").hidden = http; $("#http-field").hidden = !http; });
 function syncChannelKindForm() {
   const kind = String($("#channel-kind").value);

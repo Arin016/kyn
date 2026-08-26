@@ -39,6 +39,26 @@ export interface RunState {
 export interface PermissionRequest {
   id: string;
   title: string;
+  runId?: string;
+  requestId?: string;
+  toolName?: string;
+  source?: string;
+}
+
+export interface Interaction {
+  id: string;
+  run_id: string;
+  bot_name: string;
+  actor: string;
+  kind: "permission";
+  request_id: string;
+  title: string;
+  tool_name: string;
+  status: "pending" | "resolved" | "expired";
+  decision: string;
+  decided_by: string;
+  created_at: string;
+  resolved_at: string;
 }
 
 export interface TimelineEntry {
@@ -161,4 +181,5 @@ export type StreamEnvelope = {
   stop_reason?: string;
   request_id?: string;
   requestId?: string;
+  interaction_id?: string;
 };

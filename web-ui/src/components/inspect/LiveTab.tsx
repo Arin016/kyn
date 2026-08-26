@@ -15,9 +15,6 @@ interface Props {
   permissions: PermissionRequest[];
   onDecide: (id: string, decision: "once" | "reject") => void;
   timeline: TimelineEntry[];
-  trustAll: boolean;
-  onToggleTrustAll: (value: boolean) => void;
-  onApproveAll: () => void;
 }
 
 export function LiveTab({
@@ -26,11 +23,7 @@ export function LiveTab({
   permissions,
   onDecide,
   timeline,
-  trustAll,
-  onToggleTrustAll,
-  onApproveAll,
 }: Props) {
-  const busy = phase === "running" || phase === "starting" || phase === "waiting";
   const anyPending = permissions.length > 0;
 
   return (
@@ -43,34 +36,16 @@ export function LiveTab({
         <p className="run-card-detail">{detail || "Tool activity and approval requests will appear here."}</p>
       </div>
 
-      {busy && (
-        <div className="trust-bar" role="group" aria-label="Approvals">
-          <label className="trust-toggle">
-            <input
-              type="checkbox"
-              checked={trustAll}
-              onChange={(event) => onToggleTrustAll(event.target.checked)}
-            />
-            <span className="trust-track" aria-hidden />
-            <span className="trust-copy">
-              <strong>Trust this run</strong>
-              <span>Auto-approve every tool this run asks for. Reject stays manual.</span>
-            </span>
-          </label>
-          {anyPending && (
-            <button type="button" className="btn btn-sm btn-primary trust-approve-all" onClick={onApproveAll}>
-              Approve {permissions.length} pending
-            </button>
-          )}
-        </div>
-      )}
-
       {anyPending && (
         <section aria-label="Permission requests" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <p className="section-label">Needs you</p>
           {permissions.map((permission) => (
             <article key={permission.id} className="approval-card">
               <p className="approval-title">{permission.title || "Tool permission requested"}</p>
+              <p className="approval-context">
+                {permission.toolName || "Tool action"}
+                {permission.source ? ` · ${permission.source.replace("channel:", "")}` : ""}
+              </p>
               <div className="approval-buttons">
                 <button type="button" className="btn-approve" onClick={() => onDecide(permission.id, "once")}>
                   Allow once

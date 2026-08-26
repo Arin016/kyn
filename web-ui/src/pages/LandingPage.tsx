@@ -43,8 +43,8 @@ const PERSONAS: Persona[] = [
     role: "The Coordinator",
     outcome: "Moves one outcome through several specialists.",
     body:
-      "Break a larger goal into named responsibilities. Independent agents move in parallel, dependent work waits for the right result, and one cancellation stops the plan cleanly.",
-    detail: "Parallel work · explicit dependencies · one visible plan",
+      "Describe the outcome in chat or draw it on the workflow board. Independent agents move in parallel, dependent work waits for the right result, and one bot can call another for focused help.",
+    detail: "Conversational launch · drag-and-drop DAG · bot calls",
   },
 ];
 
@@ -62,7 +62,7 @@ const PRODUCT_PROMISES = [
   {
     label: "Governed",
     title: "Autonomy with a hard edge",
-    body: "Policies, quotas, approvals, isolated workspaces, and an audit trail stay outside the model.",
+    body: "Policies, quotas, per-action approvals, isolated workspaces, and an audit trail stay outside the model.",
   },
 ];
 
@@ -89,11 +89,16 @@ const PRODUCT_PILLARS = [
     eyebrow: "Trust the harness",
     title: "The model proposes. The control plane decides.",
     body:
-      "Tool policy, quotas, approval routing, workspace isolation, deterministic checks, and final handoffs are enforced by code—not left to a prompt to remember.",
+      "Tool policy, quotas, reload-safe approval routing, workspace isolation, deterministic checks, and final handoffs are enforced by code. Every gate is one decision—never blanket trust.",
   },
 ];
 
 const FAQS = [
+  {
+    question: "Can one bot actually launch work on other bots?",
+    answer:
+      "Yes. A governed built-in control tool can create, inspect, start, and cancel durable team workflows from the conversation. It can also call a different named bot for one focused result. The same plans are editable as a drag-and-drop board in the control room.",
+  },
   {
     question: "Is Kiro Bot another coding model?",
     answer:

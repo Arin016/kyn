@@ -8,9 +8,10 @@ interface ModalProps {
   open: boolean;
   onClose: () => void;
   children: ReactNode;
+  wide?: boolean;
 }
 
-export function Modal({ eyebrow, title, open, onClose, children }: ModalProps) {
+export function Modal({ eyebrow, title, open, onClose, children, wide = false }: ModalProps) {
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
@@ -32,7 +33,7 @@ export function Modal({ eyebrow, title, open, onClose, children }: ModalProps) {
       }}
     >
       <motion.div
-        className="modal-dialog"
+        className={`modal-dialog${wide ? " modal-dialog-wide" : ""}`}
         initial={{ opacity: 0, y: 18, scale: 0.97 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}

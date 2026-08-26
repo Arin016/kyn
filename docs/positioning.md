@@ -30,10 +30,12 @@ The same named agent can receive work from the browser, Slack, GitHub, WhatsApp,
 ### A roster, not one overloaded chat
 
 Builders, reviewers, operators, triage agents, and coordinators can keep different context and policies. Independent agents can run concurrently; durable plans express dependencies.
+Plans can be spoken into existence through a governed bot tool or drawn as a drag-and-drop workflow. A bot can call another named bot for a focused result.
 
 ### Autonomy with a hard edge
 
 Policies, quotas, permission routing, workspace isolation, deterministic checks, mutation detection, and human handoffs live in code outside the model.
+Every consequential gate is an individual durable decision. There is no blanket trust switch.
 
 ## Proof points
 
@@ -41,6 +43,8 @@ Policies, quotas, permission routing, workspace isolation, deterministic checks,
 - Cross-surface memory with immutable source records.
 - One-time and repeating routines.
 - Multi-agent DAG execution with cancellation and bounded concurrency.
+- Conversational team actuation, focused bot calls, and a no-code workflow board.
+- Reload-safe interaction cards and Telegram inline Allow once / Deny callbacks.
 - Signature-verified remote channels and allow lists.
 - Detached Git workspaces and SHA-256 artifact manifests.
 - Build → check → bounded repair → independent review → human handoff.
@@ -53,7 +57,7 @@ Policies, quotas, permission routing, workspace isolation, deterministic checks,
 - The coding lifecycle does not push, open a pull request, merge, or publish.
 - Email uses a normalized webhook contract rather than a native Gmail synchronizer.
 - There is no persistent browser/computer-use provider.
-- Delegation is a durable dependency graph, not free-form asynchronous bot-to-bot chat.
+- Delegation is a durable dependency graph with focused synchronous bot calls, not free-form asynchronous bot-to-bot chat.
 
 ## Voice
 

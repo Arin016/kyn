@@ -81,12 +81,17 @@ const SUBSYSTEMS: { area: string; role: string; file: string }[] = [
   },
   {
     area: "Delegation",
-    role: "Multi-bot DAGs with bounded fan-out and depth. Atomic exclusive claim of ready nodes. Cascade cancellation.",
-    file: "delegation.py",
+    role: "Multi-bot DAGs with bounded fan-out and depth. Conversational host tools and a drag-and-drop board compile to the same durable graph.",
+    file: "delegation.py · control_mcp.py",
+  },
+  {
+    area: "Interactions",
+    role: "Durable, single-decision human gates. Reload-safe control-room cards and Telegram inline callbacks; no blanket run trust.",
+    file: "interactions.py",
   },
   {
     area: "Channels",
-    role: "Signature-verified ingest from Slack, GitHub, WhatsApp, email, and generic webhooks. Delivery-ID deduplication. Telegram polls, no public URL.",
+    role: "Signature-verified ingest from Slack, GitHub, WhatsApp, email, and generic webhooks. Telegram polls and returns actionable approval buttons without a public URL.",
     file: "channels.py",
   },
   {

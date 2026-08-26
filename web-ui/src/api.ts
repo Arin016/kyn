@@ -5,6 +5,7 @@ import type {
   ChannelEvent,
   CodingExecution,
   DelegationPlan,
+  Interaction,
   MemoryRecord,
   Plugin,
   Policy,
@@ -113,6 +114,15 @@ export const api = {
     request(`/api/runs/${encodeURIComponent(runId)}/cancel`, { method: "POST" }),
   decidePermission: (runId: string, requestId: string, decision: string) =>
     request(`/api/runs/${encodeURIComponent(runId)}/permissions/${encodeURIComponent(requestId)}`, {
+      method: "POST",
+      body: JSON.stringify({ decision }),
+    }),
+  interactions: (bot: string, status = "pending") =>
+    request<Interaction[]>(
+      `/api/interactions?bot_name=${encodeURIComponent(bot)}&status=${encodeURIComponent(status)}`,
+    ),
+  decideInteraction: (interactionId: string, decision: string) =>
+    request<Interaction>(`/api/interactions/${encodeURIComponent(interactionId)}/decide`, {
       method: "POST",
       body: JSON.stringify({ decision }),
     }),

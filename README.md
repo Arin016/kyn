@@ -33,6 +33,9 @@ points, voice, and honest boundaries.
 - Stream runs over WebSocket with reconnect-safe sequence cursors.
 - Approve once, reject, or cancel from the browser. Persistent grants are
   governed centrally through the Safety policy instead of Kiro-side bypasses.
+- Persist each pending human gate independently of the live stream. Reload the
+  control room and the exact action is still actionable; there is no blanket
+  "trust this run" shortcut.
 - Browse durable conversation history and live tool activity.
 - Preserve completed exchanges in an append-only shared-memory ledger, retrieve
   a bounded relevance-and-recency evidence bundle across local chat and remote
@@ -53,6 +56,9 @@ points, voice, and honest boundaries.
   at-least-once semantics and expiring execution leases.
 - Coordinate durable multi-bot task graphs with bounded fan-out, dependency
   ordering, cancellation, and deterministic result aggregation.
+- Create, start, inspect and cancel those plans conversationally through the
+  built-in governed control MCP, or draw them as a drag-and-drop workflow board.
+  A named bot can also call a different durable bot for one focused result.
 - Create detached per-run Git worktrees, retain material output, and record
   bounded SHA-256 artifact manifests without force-cleaning user work.
 - Run a durable, idempotent coding lifecycle in an isolated worktree: Kiro
@@ -68,6 +74,8 @@ points, voice, and honest boundaries.
   allowed sources/senders, isolate external ACP sessions so unrelated source
   threads cannot inherit one another, recover accepted events after restart,
   and deliver optional replies to Slack threads or GitHub issue conversations.
+- Return Telegram-originated tool gates as inline **Allow once** and **Deny**
+  buttons; every decision is tied to the originating run and channel identity.
 
 ## Quick start
 
@@ -102,6 +110,11 @@ The **Coding** panel starts and monitors verified patch executions. Select the
 builder bot, choose a separate reviewer, describe the task, and provide direct
 argument-vector checks such as `tests: python, -m, pytest, -q`. A ready result
 still requires a human handoff approval.
+
+The **Teams** workflow builder turns draggable bot cards and explicit "wait
+for" links into the same durable dependency graph used by the API. Bots can
+also invoke the reserved `kiro-control` MCP to create that graph directly from
+a conversation; the host still asks before executing the control tool.
 
 The **Channels** panel connects a selected bot to another place without storing
 secret values. Configure the signing secret or reply token in the daemon's

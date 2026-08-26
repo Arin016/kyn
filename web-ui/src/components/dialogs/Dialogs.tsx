@@ -9,6 +9,7 @@ interface DialogProps {
   open: boolean;
   onClose: () => void;
   bot: Bot | null;
+  bots?: Bot[];
   onDone: () => void;
 }
 
@@ -420,41 +421,80 @@ export function ChannelDialog({ open, onClose, bot, onDone }: DialogProps) {
   );
 }
 
-export function DelegationDialog({ open, onClose, onDone }: DialogProps) {
+interface BoardNode {
+  id: string;
+  bot_name: string;
+  prompt: string;
+  after: string[];
+}
+
+function newBoardNode(botName = ""): BoardNode {
+  return { id: crypto.randomUUID(), bot_name: botName, prompt: "", after: [] };
+}
+
+export function DelegationDialog({ open, onClose, onDone, bots = [] }: DialogProps) {
   const [error, setError] = useState("");
+  const [name, setName] = useState("");
+  const [nodes, setNodes] = useState<BoardNode[]>([]);
+  const [dragging, setDragging] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open || nodes.length) return;
+    setNodes([newBoardNode(bots[0]?.name || ""), newBoardNode(bots[1]?.name || bots[0]?.name || "")]);
+  }, [open, bots, nodes.length]);
+
+  const updateNode = (id: string, changes: Partial<BoardNode>) => {
+    setNodes((current) => current.map((node) => (node.id === id ? { ...node, ...changes } : node)));
+  };
+
+  const moveNode = (sourceId: string, targetId: string) => {
+    if (sourceId === targetId) return;
+    setNodes((current) => {
+      const source = current.findIndex((node) => node.id === sourceId);
+      const target = current.findIndex((node) => node.id === targetId);
+      if (source < 0 || target < 0) return current;
+      const reordered = [...current];
+      const [moved] = reordered.splice(source, 1);
+      reordered.splice(target, 0, moved);
+      const prior = new Set<string>();
+      return reordered.map((node) => {
+        const safe = { ...node, after: node.after.filter((id) => prior.has(id)) };
+        prior.add(node.id);
+        return safe;
+      });
+    });
+  };
+
+  const reset = () => {
+    setName("");
+    setNodes([]);
+    setDragging(null);
+  };
+
   return (
-    <Modal eyebrow="Work" title="Send a team" open={open} onClose={onClose}>
+    <Modal eyebrow="Work" title="Design a bot workflow" open={open} onClose={onClose} wide>
       <form
-        className="modal-form"
+        className="modal-form workflow-form"
         onSubmit={async (event) => {
           event.preventDefault();
           setError("");
-          const values = formValues(event.currentTarget);
           try {
-            const tasks = String(values.tasks || "")
-              .split("\n")
-              .map((line) => line.trim())
-              .filter(Boolean)
-              .map((line, index) => {
-                const split = line.indexOf(":");
-                if (split < 1) throw new Error(`Line ${index + 1} must use bot-name: instruction.`);
-                const instruction = line.slice(split + 1).trim();
-                const dependencySplit = instruction.lastIndexOf(" <- ");
-                const prompt = dependencySplit < 0 ? instruction : instruction.slice(0, dependencySplit).trim();
-                const after =
-                  dependencySplit < 0 ? [] : csv(instruction.slice(dependencySplit + 4)).map(Number);
-                if (!prompt || after.some((value) => !Number.isInteger(value) || value < 1)) {
-                  throw new Error(`Line ${index + 1} has invalid dependencies.`);
-                }
-                return { id: `task-${index + 1}`, bot_name: line.slice(0, split).trim(), prompt, after };
-              });
-            if (!tasks.length) throw new Error("Add at least one bot task.");
-            const edges = tasks.flatMap((task) =>
-              task.after.map((dependency) => ({ source: `task-${dependency}`, target: task.id })),
+            if (!name.trim()) throw new Error("Give this workflow a name.");
+            if (!nodes.length) throw new Error("Add at least one bot step.");
+            if (nodes.some((node) => !node.bot_name || !node.prompt.trim())) {
+              throw new Error("Every step needs a bot and an instruction.");
+            }
+            const ids = new Map(nodes.map((node, index) => [node.id, `step-${index + 1}`]));
+            const edges = nodes.flatMap((node) =>
+              node.after.map((dependency) => ({ source: ids.get(dependency), target: ids.get(node.id) })),
             );
-            const nodes = tasks.map(({ after: _after, ...task }) => task);
-            await api.createDelegation({ name: values.name, nodes, edges });
-            event.currentTarget.reset();
+            const payloadNodes = nodes.map((node) => ({
+              id: ids.get(node.id),
+              bot_name: node.bot_name,
+              prompt: node.prompt.trim(),
+            }));
+            await api.createDelegation({ name: name.trim(), nodes: payloadNodes, edges });
+            reset();
             onClose();
             onDone();
           } catch (exc) {
@@ -462,22 +502,74 @@ export function DelegationDialog({ open, onClose, onDone }: DialogProps) {
           }
         }}
       >
-        <p className="dialog-copy">Give each bot one part of the goal. Independent tasks run in parallel and remain visible as one plan.</p>
-        <label>
-          Plan name <input name="name" required maxLength={100} placeholder="Research launch risks" />
-        </label>
-        <label>
-          Bot tasks
-          <textarea
-            name="tasks"
-            required
-            rows={7}
-            placeholder={"researcher: Investigate the design\nbuilder: Implement the fix <- 1\nreviewer: Review the result <- 2"}
-          />
-        </label>
-        <p className="dialog-copy">
-          Use <strong>bot-name: instruction</strong>. Add <strong>&lt;- 1,2</strong> to wait for earlier task numbers.
-        </p>
+        <div className="workflow-intro">
+          <p className="dialog-copy">Drag steps to reorder them. Connect a step to earlier outputs to create a dependency; unconnected steps run in parallel.</p>
+          <label>
+            Workflow name
+            <input value={name} onChange={(event) => setName(event.target.value)} required maxLength={100} placeholder="Ship the release safely" />
+          </label>
+        </div>
+        <div className="workflow-board" aria-label="Bot workflow board">
+          {nodes.map((node, index) => {
+            const upstream = nodes.slice(0, index);
+            return (
+              <article
+                key={node.id}
+                className={`workflow-node${dragging === node.id ? " dragging" : ""}`}
+                draggable
+                onDragStart={() => setDragging(node.id)}
+                onDragEnd={() => setDragging(null)}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={() => dragging && moveNode(dragging, node.id)}
+              >
+                <header className="workflow-node-head">
+                  <span className="workflow-grip" aria-hidden>⠿</span>
+                  <span>Step {index + 1}</span>
+                  <button
+                    type="button"
+                    className="workflow-remove"
+                    aria-label={`Remove step ${index + 1}`}
+                    onClick={() => setNodes((current) => current.filter((item) => item.id !== node.id).map((item) => ({ ...item, after: item.after.filter((id) => id !== node.id) })))}
+                  >×</button>
+                </header>
+                <label>
+                  Bot
+                  <select value={node.bot_name} onChange={(event) => updateNode(node.id, { bot_name: event.target.value })} required>
+                    <option value="">Choose a named bot</option>
+                    {bots.map((bot) => <option key={bot.name} value={bot.name}>{bot.name}</option>)}
+                  </select>
+                </label>
+                <label>
+                  Instruction
+                  <textarea value={node.prompt} onChange={(event) => updateNode(node.id, { prompt: event.target.value })} rows={4} required placeholder="Give this bot one focused outcome…" />
+                </label>
+                <fieldset className="workflow-dependencies">
+                  <legend>Wait for</legend>
+                  {upstream.length ? upstream.map((candidate) => {
+                    const candidateIndex = nodes.findIndex((item) => item.id === candidate.id);
+                    return (
+                      <label key={candidate.id} className="dependency-chip">
+                        <input
+                          type="checkbox"
+                          checked={node.after.includes(candidate.id)}
+                          onChange={(event) => updateNode(node.id, {
+                            after: event.target.checked
+                              ? [...node.after, candidate.id]
+                              : node.after.filter((id) => id !== candidate.id),
+                          })}
+                        />
+                        Step {candidateIndex + 1}
+                      </label>
+                    );
+                  }) : <span className="workflow-root">Starts immediately</span>}
+                </fieldset>
+              </article>
+            );
+          })}
+          <button type="button" className="workflow-add" onClick={() => setNodes((current) => [...current, newBoardNode(bots[0]?.name || "")])}>
+            <span>＋</span> Add bot step
+          </button>
+        </div>
         <p className="form-error" role="alert">
           {error}
         </p>

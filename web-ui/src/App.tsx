@@ -30,6 +30,7 @@ import type {
   CodingExecution,
   DelegationPlan,
   HistoryTurn,
+  Interaction,
   LiveMessage,
   PermissionRequest,
   Plugin,
@@ -267,7 +268,6 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
   const [inspectTab, setInspectTab] = useState<InspectTab>("run");
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 900);
   const [dialog, setDialog] = useState<DialogName>(null);
-  const [trustAll, setTrustAll] = useState(false);
 
   const [management, setManagement] = useState<ManagementData>({
     policy: null,
@@ -360,12 +360,21 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
           }
           return [...current, { type: "reasoning", id: crypto.randomUUID(), text, running: true }];
         });
-      } else if (kind === "permission") {
-        const id = String(event.request_id || event.requestId || event.id || crypto.randomUUID());
+      } else if (kind === "permission" || kind === "interaction_required") {
+        const id = String(event.interaction_id || event.request_id || event.requestId || event.id || crypto.randomUUID());
+        const requestId = String(event.request_id || event.requestId || "");
         setPhase("waiting");
         setRunDetail(String(event.title || "Kiro needs permission to continue."));
         setPermissions((current) =>
-          current.some((item) => item.id === id) ? current : [...current, { id, title: String(event.title || "") }],
+          current.some((item) => item.id === id)
+            ? current
+            : [...current, {
+                id,
+                title: String(event.title || ""),
+                runId: activeRunRef.current?.id,
+                requestId,
+                toolName: String(event.tool_name || ""),
+              }],
         );
         setParts((current) =>
           current.some((part) => part.type === "approval" && part.id === id)
@@ -487,6 +496,25 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
     }
   }, [selectedBot, showToast]);
 
+  const loadInteractions = useCallback(async () => {
+    if (!selectedBot) return;
+    try {
+      const items = await api.interactions(selectedBot.name);
+      setPermissions(
+        items.map((item: Interaction) => ({
+          id: item.id,
+          title: item.title,
+          runId: item.run_id,
+          requestId: item.request_id,
+          toolName: item.tool_name,
+          source: item.actor,
+        })),
+      );
+    } catch (error) {
+      showToast((error as Error).message || "Could not load pending actions", true);
+    }
+  }, [selectedBot, showToast]);
+
   const loadThread = useCallback(async () => {
     if (!selectedBot) return;
     try {
@@ -523,7 +551,6 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
       setRunDetail("");
       setTimeline([]);
       setInspectPinned(false);
-      setTrustAll(false);
       const url = new URL(location.href);
       url.searchParams.set("bot", bot.name);
       history.replaceState({}, "", url);
@@ -535,7 +562,10 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
     if (!selectedBot) return;
     void loadThread();
     void loadManagement();
-  }, [selectedBot, loadThread, loadManagement]);
+    void loadInteractions();
+    const timer = window.setInterval(() => void loadInteractions(), 2500);
+    return () => window.clearInterval(timer);
+  }, [selectedBot, loadThread, loadManagement, loadInteractions]);
 
   const loadBots = useCallback(async () => {
     try {
@@ -598,9 +628,15 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
 
   const decidePermission = useCallback(
     async (id: string, decision: "once" | "reject") => {
-      if (!activeRun) return;
+      const permission = permissions.find((item) => item.id === id);
       try {
-        await api.decidePermission(activeRun.id, id, decision);
+        if (permission?.runId && permission.requestId && permission.id.length === 32) {
+          await api.decideInteraction(permission.id, decision);
+        } else if (activeRun) {
+          await api.decidePermission(activeRun.id, permission?.requestId || id, decision);
+        } else {
+          throw new Error("This approval is no longer attached to an active run.");
+        }
         setPermissions((current) => current.filter((permission) => permission.id !== id));
         setParts((current) => current.filter((part) => !(part.type === "approval" && part.id === id)));
         setPhase("running");
@@ -609,22 +645,8 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
         showToast((error as Error).message || "Could not submit decision", true);
       }
     },
-    [activeRun, showToast],
+    [activeRun, permissions, showToast],
   );
-
-  const approveAllPending = useCallback(() => {
-    for (const permission of permissions) {
-      void decidePermission(permission.id, "once");
-    }
-  }, [permissions, decidePermission]);
-
-  // Auto-approve incoming permissions while "Trust this run" is on.
-  useEffect(() => {
-    if (!trustAll || !activeRun || permissions.length === 0) return;
-    for (const permission of permissions) {
-      void decidePermission(permission.id, "once");
-    }
-  }, [trustAll, activeRun, permissions, decidePermission]);
 
   // ---- Management actions ----------------------------------------------
 
@@ -726,7 +748,7 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
     void loadBots();
   }, [loadManagement, loadBots]);
 
-  const dialogProps = { open: dialog !== null, onClose: closeDialog, bot: selectedBot, onDone: doneAndReload };
+  const dialogProps = { open: dialog !== null, onClose: closeDialog, bot: selectedBot, bots, onDone: doneAndReload };
 
   return (
     <div className="app">
@@ -843,9 +865,6 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
         workActions={workActions}
         safetyActions={safetyActions}
         hasBot={Boolean(selectedBot)}
-        trustAll={trustAll}
-        onToggleTrustAll={setTrustAll}
-        onApproveAll={approveAllPending}
       />
 
       {dialog === "bot" && <CreateBotDialog {...dialogProps} />}
