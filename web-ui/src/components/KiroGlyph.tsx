@@ -44,7 +44,6 @@ export function KiroGlyph({ size = 28, className, title }: Props) {
       />
       <ellipse cx="29" cy="24" rx="3.25" ry="5.25" fill="#C39AFF" />
       <ellipse cx="41.5" cy="24" rx="3.25" ry="5.25" fill="#A86CFF" />
-      <path d="M28.5 37v12m0-5.5 7.5-7M31 42l7.5 7" fill="none" stroke={`url(#${edgeGradient})`} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" opacity=".82" />
       <path d="M17 18c2.8-5.5 7.8-8.3 14.8-8.3" fill="none" stroke="#FFFFFF" strokeOpacity=".16" strokeWidth="2" strokeLinecap="round" />
     </svg>
   );

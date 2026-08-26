@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { KiroGlyph } from "../components/KiroGlyph";
+import { PixelKiro } from "../components/PixelKiro";
 
 type Persona = {
   role: string;
@@ -201,7 +202,10 @@ export default function LandingPage({ onEnterConsole, onOpenEngineering }: Props
 
       <main id="main">
         {/* HERO — two-column, Kiro-style */}
-        <section className="ed-container ed-hero-2col">
+        <section className="ed-hero-stage">
+          <PixelKiro />
+          <div className="ed-hero-vignette" aria-hidden="true" />
+          <div className="ed-container ed-hero-2col">
           <div className="ed-hero">
             <motion.p
               className="ed-eyebrow"
@@ -264,6 +268,7 @@ export default function LandingPage({ onEnterConsole, onOpenEngineering }: Props
               ))}
             </ul>
           </motion.aside>
+          </div>
         </section>
 
         {/* WHY */}
