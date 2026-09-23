@@ -74,6 +74,7 @@ try:  # Keep the ACP/CLI-only installation dependency-free.
     from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
     from fastapi.staticfiles import StaticFiles
     from pydantic import BaseModel, Field
+    from starlette.websockets import WebSocketDisconnect
 except ImportError as _fastapi_import_error:  # pragma: no cover - environment-specific
     FastAPI = None  # type: ignore[assignment,misc]
     _FASTAPI_IMPORT_ERROR: ImportError | None = _fastapi_import_error
@@ -1265,16 +1266,21 @@ def create_app(
                 {"type": "terminal", "run_id": run_id, "run": _json_safe(final_run)}
             )
             await websocket.close(code=1000)
+        except WebSocketDisconnect:
+            return
         except Exception as exc:
             _logger.exception("KYN WebSocket stream failed", exc_info=exc)
-            await websocket.send_json(
-                {
-                    "type": "error",
-                    "error": "stream_failed",
-                    "detail": "The live stream could not be completed",
-                }
-            )
-            await websocket.close(code=1011)
+            try:
+                await websocket.send_json(
+                    {
+                        "type": "error",
+                        "error": "stream_failed",
+                        "detail": "The live stream could not be completed",
+                    }
+                )
+                await websocket.close(code=1011)
+            except (WebSocketDisconnect, RuntimeError):
+                return
 
     @app.websocket("/ws/live")
     async def stream_live(websocket: WebSocket) -> None:
