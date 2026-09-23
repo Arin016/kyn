@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
+from .harness_context import display_prompt
 
 def default_home() -> Path:
     return Path(os.environ.get("KYN_HOME", "~/.kyn")).expanduser()
@@ -178,7 +179,7 @@ class Store:
                     {
                         "id": turn["id"],
                         "bot_name": turn["bot_name"],
-                        "prompt": turn["prompt"],
+                        "prompt": display_prompt(str(turn["prompt"] or "")),
                         "status": turn["status"],
                         "stop_reason": turn["stop_reason"],
                         "started_at": turn["started_at"],

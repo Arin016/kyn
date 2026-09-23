@@ -10,6 +10,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Any, Mapping, Sequence
 
+from .harness_context import display_prompt
 from .store import Store
 
 
@@ -165,7 +166,7 @@ class SharedMemoryStore:
             imported = 0
             touched: set[str] = set()
             for turn in turns:
-                prompt = str(turn["prompt"] or "").strip()
+                prompt = display_prompt(str(turn["prompt"] or "")).strip()
                 if not prompt or prompt.startswith(
                     "You are responding through an authenticated external channel."
                 ):

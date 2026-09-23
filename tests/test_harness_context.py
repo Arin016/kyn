@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from kyn.harness_context import compose_execution_prompt, render_harness_context
+from kyn.harness_context import compose_execution_prompt, display_prompt, render_harness_context
 
 
 def test_capability_contract_distinguishes_durable_bots_from_subagents() -> None:
@@ -33,3 +33,22 @@ def test_execution_prompt_keeps_evidence_separate_from_current_request() -> None
 
     assert rendered.index("<kyn_control_plane>") < rendered.index("<memory>")
     assert rendered.endswith("Current request:\nCan you orchestrate multiple bots?")
+
+
+def test_display_prompt_returns_only_the_user_request() -> None:
+    composed = compose_execution_prompt(
+        "hey nick what can you do for me?",
+        bot_names=["nick"],
+        memory_context="<memory>Earlier decision</memory>",
+    )
+
+    displayed = display_prompt(composed)
+
+    assert displayed == "hey nick what can you do for me?"
+    assert "<kyn_control_plane>" not in displayed
+    assert "Current request:" not in displayed
+
+
+def test_display_prompt_is_safe_for_plain_text() -> None:
+    assert display_prompt("  just a message  ") == "just a message"
+    assert display_prompt("") == ""

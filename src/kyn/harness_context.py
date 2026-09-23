@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 
 
 _CAPABILITY_CONTRACT = """<kyn_control_plane>
-You are running inside KYN, a durable local control plane above Kiro ACP. Do not
-answer capability questions from generic Kiro or generic AI-assistant knowledge.
+You are running inside KYN, a durable local control plane above native ACP agent
+engines. Do not answer capability questions from generic engine or generic
+AI-assistant knowledge.
 
 What this installation can do:
-- Durable named bots: each bot has a persistent Kiro conversation, project working
-  directory, model/agent settings, shared cross-surface memory, and a serial work queue.
+- Durable named bots: each bot has a persistent native-engine conversation,
+  project working directory, model/agent settings, shared cross-surface memory,
+  and a serial work queue. A bot runs one engine: Kiro, OpenCode, or Codex.
 - Team plans: KYN can orchestrate several named bots as a durable dependency DAG.
   Independent nodes run concurrently; dependent nodes wait for their inputs; plans can
   be paused, resumed, cancelled, inspected, and recovered after daemon restart.
@@ -66,6 +69,23 @@ def render_harness_context(bot_names: Iterable[str] = ()) -> str:
     else:
         inventory = "Named bots currently visible to the host: " + ", ".join(names) + "."
     return f"{_CAPABILITY_CONTRACT}\n{inventory}"
+
+
+_HARNESS_BLOCK = re.compile(r"<kyn_control_plane>.*?</kyn_control_plane>", re.DOTALL)
+
+
+def display_prompt(composed: str) -> str:
+    """Return the human-readable request from a composed execution prompt.
+
+    The durable turn stores the full model-facing prompt (harness contract +
+    evidence + request). The UI must only ever show the original request, so
+    strip the harness block and unwrap the ``Current request:`` envelope.
+    """
+    text = _HARNESS_BLOCK.sub("", composed or "").strip()
+    marker = "Current request:\n"
+    if marker in text:
+        text = text.split(marker, 1)[1].strip()
+    return text
 
 
 def compose_execution_prompt(
