@@ -34,6 +34,8 @@ from .routines import RoutineNotFound, RoutineStore, Scheduler
 from .memory import SharedMemoryStore
 from .internal_control import CONTROL_PLUGIN_ID, ensure_bot_control, ensure_internal_control
 from .interactions import InteractionConflict, InteractionNotFound, InteractionStore
+from . import providers
+from .handoff import HandoffError, compile_handoff
 from .store import Bot, Store
 from .workspaces import WorkspaceError, WorkspaceLease, WorkspaceManager
 from .coding_lifecycle import (
@@ -96,6 +98,11 @@ if FastAPI is not None:
 
     class TurnBody(BaseModel):
         message: str = Field(min_length=1)
+
+
+    class HandoffBody(BaseModel):
+        to_engine: str = Field(min_length=1, max_length=32)
+        budget_tokens: int = Field(default=12_000, ge=500, le=200_000)
 
 
     class PermissionBody(BaseModel):
@@ -606,6 +613,21 @@ def create_app(
     async def bot_history(name: str) -> dict[str, Any]:
         _require_bot(active_store, name)
         return {"bot": name, "turns": _json_safe(active_store.history(name))}
+
+    @app.post("/api/bots/{name}/handoff")
+    async def bot_handoff(name: str, body: HandoffBody) -> dict[str, Any]:
+        _require_bot(active_store, name)
+        try:
+            bundle = await asyncio.to_thread(
+                compile_handoff,
+                active_store,
+                name,
+                to_engine=body.to_engine,
+                budget_tokens=body.budget_tokens,
+            )
+        except HandoffError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        return _json_safe(bundle)
 
     @app.get("/api/bots/{name}/memory")
     async def bot_memory(

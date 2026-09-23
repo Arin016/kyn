@@ -612,3 +612,35 @@ def test_coding_lifecycle_routes_stop_at_human_handoff(tmp_path: Path) -> None:
         assert approved.json()["status"] == "ready"
         assert client.post("/api/coding-executions/coding-1/cancel").json()["status"] == "cancelled"
     assert coding.started and coding.closed
+def test_handoff_route_compiles_portable_bundle(tmp_path: Path) -> None:
+    import subprocess
+
+    from kyn.protocol import Event
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    for args in (
+        ["init", "-q"],
+        ["config", "user.email", "test@example.invalid"],
+        ["config", "user.name", "KYN Test"],
+    ):
+        subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
+    (repo / "app.py").write_text("value = 1\n")
+    subprocess.run(["git", "add", "app.py"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-q", "-m", "initial"], cwd=repo, check=True, capture_output=True)
+    (repo / "app.py").write_text("value = 2\n")
+
+    store = Store(tmp_path / "store")
+    store.put_bot(Bot("builder", str(repo), engine="kiro"))
+    turn_id = store.begin_turn("builder", "Fix the value")
+    store.add_event(turn_id, 1, Event(kind="text", text="value = 2"))
+    store.finish_turn(turn_id, "complete", "end_turn")
+    app = create_app(store, FakeEngine())
+    with _test_client(app) as client:
+        response = client.post("/api/bots/builder/handoff", json={"to_engine": "opencode"})
+        assert response.status_code == 200
+        bundle = response.json()
+        assert bundle["from_engine"] == "kiro"
+        assert bundle["to_engine"] == "opencode"
+        assert "value = 2" in bundle["prompt"]
+        assert client.post("/api/bots/missing/handoff", json={"to_engine": "opencode"}).status_code == 404
