@@ -74,7 +74,10 @@ def render_harness_context(bot_names: Iterable[str] = ()) -> str:
     return f"{_CAPABILITY_CONTRACT}\n{inventory}"
 
 
-_HARNESS_BLOCK = re.compile(r"<kyn_control_plane>.*?</kyn_control_plane>", re.DOTALL)
+_HARNESS_BLOCK = re.compile(
+    r"<kyn_control_plane>.*?</kyn_control_plane>|<caller_context>.*?</caller_context>",
+    re.DOTALL,
+)
 
 
 def display_prompt(composed: str) -> str:

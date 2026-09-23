@@ -4,6 +4,7 @@ import argparse
 import ipaddress
 import json
 import os
+import subprocess
 import sys
 import time
 import urllib.error
@@ -87,7 +88,11 @@ TOOLS = [
     },
     {
         "name": "call_bot",
-        "description": "Ask another durable named bot to do focused work and wait for its result. Never target the calling bot.",
+        "description": (
+            "Ask another durable named bot to do focused work and wait for its result. "
+            "Never target the calling bot. The caller's repository, branch, commit, and "
+            "changed files are attached automatically, so the callee knows where to look."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -167,18 +172,77 @@ def _call_tool(base: str, caller: str, name: str, args: dict[str, Any]) -> Any:
             raise ValueError("bot_name and message are required")
         if target == caller:
             raise ValueError("a bot cannot synchronously call itself")
+        snapshot = _caller_snapshot(base, caller)
+        if snapshot:
+            message = (
+                "<caller_context>\n"
+                f"{snapshot}\n"
+                "The callee runs in its own working directory. Unless the request says "
+                "otherwise, investigate the caller paths above.\n"
+                "</caller_context>\n\n" + message
+            )
         created = _http(base, "POST", f"/api/bots/{urllib.parse.quote(target, safe='')}/turns", {"message": message})
         run_id = str(created.get("run_id") or "")
         if not run_id:
             raise RuntimeError("the control plane returned no run id")
         deadline = time.monotonic() + min(max(int(args.get("timeout_seconds", 300)), 1), 600)
+        run: Any = {}
         while time.monotonic() < deadline:
             run = _http(base, "GET", f"/api/runs/{urllib.parse.quote(run_id, safe='')}")
             if str(run.get("status")) in {"complete", "failed", "cancelled"}:
                 return run
             time.sleep(0.25)
-        raise TimeoutError(f"bot call {run_id} did not finish before the timeout")
+        raise TimeoutError(
+            f"bot call {run_id} did not finish before the timeout "
+            f"(callee status: {run.get('status', 'unknown')})"
+        )
     raise ValueError(f"unknown control tool {name!r}")
+
+
+def _caller_snapshot(base_url: str, caller: str) -> str:
+    """Best-effort workspace snapshot of the calling bot.
+
+    call_bot forwards only the message text, so without this the callee has
+    no idea which repository, branch, or working tree the caller means.
+    Never raises: context is advisory and the call must proceed regardless.
+    """
+    try:
+        bot = _http(base_url, "GET", f"/api/bots/{urllib.parse.quote(caller, safe='')}")
+    except Exception:
+        return ""
+    if not isinstance(bot, dict):
+        return ""
+    cwd = str(bot.get("cwd") or "")
+    engine = str(bot.get("engine") or "unknown")
+    lines = [f"calling bot: {caller} (engine: {engine})"]
+    if not cwd:
+        return "\n".join(lines)
+    lines.append(f"caller repository: {cwd}")
+    try:
+        head = _git(cwd, "rev-parse", "--short", "HEAD").strip()
+        branch = _git(cwd, "branch", "--show-current").strip() or "DETACHED"
+        status = _git(cwd, "status", "--porcelain=v1", "-z", "--untracked-files=all")
+        changed = [record[3:] for record in status.split("\0") if len(record) > 3][:15]
+        lines.append(f"caller branch: {branch} @ {head}")
+        lines.append(f"caller changed files: {', '.join(changed) if changed else 'none'}")
+    except Exception:
+        pass
+    return "\n".join(lines)
+
+
+def _git(cwd: str, *args: str) -> str:
+    completed = subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=15,
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError("git inspection failed")
+    return completed.stdout.decode("utf-8", "replace")
 
 
 def _http(base: str, method: str, path: str, payload: Any | None = None) -> Any:
