@@ -91,6 +91,9 @@ def display_prompt(composed: str) -> str:
     marker = "Current request:\n"
     if marker in text:
         text = text.split(marker, 1)[1].strip()
+    channel_marker = re.search(r"(?m)^Latest request from [^\n]+:\n", text)
+    if channel_marker:
+        text = text[channel_marker.end():].strip()
     return text
 
 

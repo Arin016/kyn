@@ -10,10 +10,12 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Callable, Literal, Protocol
 
+from .failover import classify_provider_failure
 from .orchestrator import BotOrchestrator
 from .plugins import PluginRegistry
+from .providers import ProviderError, command_for
 from .protocol import Event
-from .store import Store
+from .store import Bot, Store
 from .run_store import RunLease as DurableRunLease, RunRepository
 from .workspaces import (
     WorkspaceExecution,
@@ -22,7 +24,7 @@ from .workspaces import (
     WorkspaceManager,
 )
 from .memory import SharedMemoryStore, local_scope
-from .harness_context import compose_execution_prompt
+from .harness_context import compose_execution_prompt, display_prompt
 from .interactions import InteractionStore
 
 try:
@@ -106,7 +108,10 @@ class _RunState:
     governance_lease: RunLease | None = None
     durable_lease: DurableRunLease | None = None
     actor: str = "api"
+    engine: str = ""
     finishing: bool = False
+    failover_attempts: int = 0
+    failover_engines: tuple[str, ...] = ()
     workspace_execution: WorkspaceExecution | None = None
     workspace_manifest: dict[str, Any] | None = None
 
@@ -123,9 +128,11 @@ class _RunState:
             "bot_name": self.bot_name,
             "message": self.message,
             "actor": self.actor,
+            "engine": self.engine,
             "status": self.status,
             "stop_reason": self.stop_reason,
             "error": self.error,
+            "failover_attempts": self.failover_attempts,
             "created_at": self.created_at,
             "started_at": self.started_at,
             "finished_at": self.finished_at,
@@ -159,6 +166,7 @@ class BotWorker:
         self._active_task: asyncio.Task[None] | None = None
         self._closed = False
         self._orchestrator_cwd: str | None = None
+        self._refresh_orchestrator = False
 
     def start(self) -> None:
         if self._loop_task is None:
@@ -254,7 +262,14 @@ class BotWorker:
         workspace_guard_acquired = False
         isolated_channel_session = run.actor.startswith("channel:")
         try:
-            await self.engine._mark_started(run)
+            try:
+                await self.engine._mark_started(run)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                if not run.terminal:
+                    await self.engine._finish(run, "failed", error=_error_text(exc))
+                return
             if run.terminal or run.finishing:
                 return
             if run.durable_lease is not None:
@@ -266,36 +281,29 @@ class BotWorker:
                 workspace_guard_id = run.workspace_execution.lease.run_id
                 await self.engine._acquire_workspace_guard(workspace_guard_id)
                 workspace_guard_acquired = True
-            execution_cwd = await self.engine._prepare_execution(run)
-            if isolated_channel_session and execution_cwd is None:
-                execution_cwd = await self.engine._channel_session_cwd(run)
             if run.workspace_execution is not None:
                 workspace_heartbeat = asyncio.create_task(
                     self.engine._heartbeat_workspace(run, asyncio.current_task()),
                     name=f"kyn-workspace-heartbeat:{run.id}",
                 )
-            orchestrator = await self._ensure_orchestrator(execution_cwd)
-            execution_prompt = await self.engine._execution_prompt(run)
-            async for event in orchestrator.run(execution_prompt):
-                if event.kind == "permission":
-                    await self.engine._apply_permission_policy(run, event, self)
-                else:
-                    await self.engine._append_event(run, event)
-                if run.terminal:
+            while True:
+                try:
+                    await self._run_attempt(run, isolated_channel_session)
                     return
-            if not run.terminal:
-                await self.engine._finish(run, "complete", stop_reason=run.stop_reason)
-        except asyncio.CancelledError:
-            if not run.terminal:
-                await self.engine._finish(run, "cancelled")
-            # A cancelled prompt may leave its final ACP response queued. Start
-            # the next turn on a clean transport; BotOrchestrator will reload
-            # the persisted Kiro session when this worker opens again.
-            await self._close_orchestrator()
-        except Exception as exc:
-            if not run.terminal:
-                await self.engine._finish(run, "failed", error=_error_text(exc))
-            await self._close_orchestrator()
+                except asyncio.CancelledError:
+                    if not run.terminal:
+                        await self.engine._finish(run, "cancelled")
+                    await self._close_orchestrator()
+                    return
+                except Exception as exc:
+                    error = _error_text(exc)
+                    if not run.terminal and await self.engine._maybe_failover(run, error):
+                        await self._close_orchestrator()
+                        continue
+                    if not run.terminal:
+                        await self.engine._finish(run, "failed", error=error)
+                    await self._close_orchestrator()
+                    return
         finally:
             if heartbeat is not None:
                 heartbeat.cancel()
@@ -306,10 +314,30 @@ class BotWorker:
             if workspace_guard_id is not None and workspace_guard_acquired:
                 await self.engine._release_workspace_guard(workspace_guard_id)
             if isolated_channel_session:
-                # External source threads carry their own bounded evidence
-                # bundle. Never let one Slack/GitHub/email thread inherit an
-                # unrelated thread through the named bot's durable ACP session.
                 await self._close_orchestrator()
+
+    async def _run_attempt(self, run: _RunState, isolated_channel_session: bool) -> None:
+        execution_cwd = await self.engine._prepare_execution(run)
+        if isolated_channel_session and execution_cwd is None:
+            execution_cwd = await self.engine._channel_session_cwd(run)
+        if self.engine._store is not None:
+            bot = await asyncio.to_thread(self.engine._store.get_bot, run.bot_name)
+            if bot is not None:
+                run.engine = bot.engine
+        if self._refresh_orchestrator:
+            await self._close_orchestrator()
+            self._refresh_orchestrator = False
+        orchestrator = await self._ensure_orchestrator(execution_cwd)
+        execution_prompt = await self.engine._execution_prompt(run)
+        async for event in orchestrator.run(execution_prompt):
+            if event.kind == "permission":
+                await self.engine._apply_permission_policy(run, event, self)
+            else:
+                await self.engine._append_event(run, event)
+            if run.terminal:
+                return
+        if not run.terminal:
+            await self.engine._finish(run, "complete", stop_reason=run.stop_reason)
 
     async def _ensure_orchestrator(self, cwd: str | None = None) -> _Orchestrator:
         if self.orchestrator is not None and self._orchestrator_cwd != cwd:
@@ -463,6 +491,114 @@ class Engine:
                 return_exceptions=True,
             )
 
+    async def set_bot_model(self, bot_name: str, model: str) -> dict[str, Any]:
+        """Change a bot's model and apply it when the live session supports it."""
+        if self._store is None:
+            raise RuntimeError("model switching requires a persistent Store")
+        bot = await asyncio.to_thread(self._store.get_bot, bot_name)
+        if bot is None:
+            raise KeyError(bot_name)
+        model = _model_value(model)
+        await asyncio.to_thread(
+            self._store.put_bot,
+            Bot(
+                name=bot.name,
+                cwd=bot.cwd,
+                agent=bot.agent,
+                model=model,
+                effort=bot.effort,
+                engine=bot.engine,
+                mcp_servers=bot.mcp_servers,
+            ),
+        )
+        worker = self._workers.get(bot_name)
+        if worker is None:
+            return {"model": model, "applied_live": False}
+        active = getattr(worker, "_active_task", None)
+        if active is not None and not active.done():
+            setattr(worker, "_refresh_orchestrator", True)
+            return {"model": model, "applied_live": False}
+        session = worker.orchestrator.session if worker.orchestrator else None
+        if session is None:
+            return {"model": model, "applied_live": False}
+        close = getattr(worker, "_close_orchestrator", None)
+        if close is None:
+            close = getattr(worker, "close", None)
+        try:
+            if not model:
+                if close is not None:
+                    await close()
+            elif bot.engine == "opencode":
+                await session.set_config_option("model", model)
+            elif bot.engine == "kiro":
+                await session.set_model(model)
+            else:
+                if close is not None:
+                    await close()
+                return {"model": model, "applied_live": False}
+        except Exception:
+            _logger.exception("Live model switch failed for bot %s", bot_name)
+            if close is not None:
+                await close()
+            return {"model": model, "applied_live": False}
+        return {"model": model, "applied_live": bool(model)}
+
+    async def _maybe_failover(self, run: _RunState, error: str) -> bool:
+        cause = classify_provider_failure(error)
+        if cause is None or self._governance is None or self._store is None:
+            return False
+        try:
+            policy = await asyncio.to_thread(self._governance.get_policy, run.bot_name)
+            bot = await asyncio.to_thread(self._store.get_bot, run.bot_name)
+        except Exception:
+            _logger.exception("Failover lookup failed for run %s", run.id)
+            return False
+        if bot is None or not policy.auto_failover:
+            return False
+        current = run.engine or bot.engine
+        attempted = set(run.failover_engines)
+        attempted.add(current)
+        for candidate in policy.failover_engines:
+            if candidate in attempted:
+                continue
+            try:
+                await asyncio.to_thread(command_for, candidate, bot.cwd)
+            except ProviderError:
+                _logger.warning("Skipping unavailable failover engine %s", candidate)
+                continue
+            updated = Bot(
+                name=bot.name,
+                cwd=bot.cwd,
+                agent=bot.agent,
+                model="",
+                effort=bot.effort,
+                engine=candidate,
+                mcp_servers=bot.mcp_servers,
+            )
+            try:
+                await asyncio.to_thread(self._store.put_bot, updated)
+            except Exception:
+                _logger.exception("Failover engine update failed for run %s", run.id)
+                return False
+            run.engine = candidate
+            run.failover_engines = tuple((*run.failover_engines, current))
+            run.failover_attempts += 1
+            async with run.condition:
+                if run.terminal or run.finishing:
+                    return False
+                run.status = "running"
+                run.error = ""
+                run.condition.notify_all()
+            _logger.warning(
+                "Run %s failed over from %s to %s (%s)",
+                run.id,
+                current,
+                candidate,
+                cause,
+            )
+            return True
+        return False
+
     async def _channel_session_cwd(self, run: _RunState) -> str:
         if self._store is None:
             raise RuntimeError("isolated channel sessions require a persistent Store")
@@ -566,6 +702,8 @@ class Engine:
         *,
         actor: str = "api",
         execution: WorkspaceExecutionSpec | None = None,
+        failover_attempts: int = 0,
+        run_id: str | None = None,
     ) -> str:
         async with self._state_lock:
             if not self._started or self._closing:
@@ -579,13 +717,37 @@ class Engine:
             if execution is not None and self._workspaces is None:
                 raise RuntimeError("workspace execution requires a WorkspaceManager")
 
-            run_id = uuid.uuid4().hex
+            run_id = _run_id_value(run_id) if run_id is not None else uuid.uuid4().hex
+            existing = self._runs.get(run_id)
+            if existing is not None:
+                if (
+                    existing.bot_name != bot_name
+                    or existing.message != message
+                    or existing.actor != actor
+                ):
+                    raise ValueError("run ID is already associated with different work")
+                return run_id
+            if self._run_repository is not None:
+                durable_existing = await asyncio.to_thread(
+                    self._run_repository.get, run_id
+                )
+                if durable_existing is not None:
+                    if (
+                        durable_existing.bot_name != bot_name
+                        or durable_existing.message != message
+                        or durable_existing.actor != actor
+                    ):
+                        raise ValueError("run ID is already associated with different work")
+                    if durable_existing.status == "queued" and run_id not in self._runs:
+                        await self._restore(durable_existing)
+                    return run_id
             run = _RunState(
                 id=run_id,
                 bot_name=bot_name,
                 message=message,
                 max_events=self._max_events_per_run,
                 actor=actor,
+                failover_attempts=failover_attempts,
             )
             if self._run_repository is not None:
                 await asyncio.to_thread(
@@ -1259,7 +1421,7 @@ class Engine:
                 run.bot_name,
                 scope,
                 run.actor,
-                run.message,
+                display_prompt(run.message),
                 response,
                 event_id=f"run:{run.id}",
                 metadata={"run_id": run.id},
@@ -1337,6 +1499,30 @@ def _copy_json(value: Any) -> Any:
 def _error_text(exc: Exception) -> str:
     message = str(exc).strip()
     return f"{type(exc).__name__}: {message}" if message else type(exc).__name__
+
+
+def _model_value(value: str) -> str:
+    if not isinstance(value, str):
+        raise TypeError("model must be a string")
+    model = value.strip()
+    if len(model) > 200:
+        raise ValueError("model exceeds 200 characters")
+    if any(ord(character) < 32 or ord(character) == 127 for character in model):
+        raise ValueError("model contains control characters")
+    return model
+
+
+def _run_id_value(value: str) -> str:
+    if not isinstance(value, str):
+        raise TypeError("run_id must be a string")
+    candidate = value.strip()
+    if not candidate or len(candidate) > 160:
+        raise ValueError("run_id must be between 1 and 160 characters")
+    if not candidate[0].isalnum() or any(
+        not (character.isalnum() or character in "._-") for character in candidate
+    ):
+        raise ValueError("run_id contains unsupported characters")
+    return candidate
 
 
 def _now() -> str:

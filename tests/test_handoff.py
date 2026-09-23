@@ -3,7 +3,9 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from kyn.handoff import compile_handoff, estimate_tokens
+import pytest
+
+from kyn.handoff import HandoffError, compile_handoff, estimate_tokens
 from kyn.protocol import Event
 from kyn.store import Bot, Store
 
@@ -38,3 +40,25 @@ def test_handoff_compiles_grounded_redacted_bundle(tmp_path: Path) -> None:
     assert bundle["total_estimated_tokens"] <= 3000
     assert bundle["workspace"]["status"]
     assert estimate_tokens("abcd") == 1
+
+
+def test_handoff_rejects_unknown_engine_and_captures_staged_files(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    _git(repo, "config", "user.name", "KYN Test")
+    (repo / "staged.txt").write_text("staged value\n")
+    _git(repo, "add", "staged.txt")
+
+    store = Store(tmp_path / "store")
+    store.put_bot(Bot(name="builder", cwd=str(repo)))
+    turn_id = store.begin_turn("builder", "Continue the staged work", engine="kiro")
+    store.finish_turn(turn_id, "complete")
+
+    bundle = compile_handoff(store, "builder", to_engine=" OpenCode ")
+    assert bundle["to_engine"] == "opencode"
+    assert "staged value" in bundle["workspace"]["diff"]
+
+    with pytest.raises(HandoffError, match="unknown agent engine"):
+        compile_handoff(store, "builder", to_engine="unknown")

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import inspect
 import hmac
 import json
 import os
@@ -410,7 +411,7 @@ class ChannelStore:
                 )
 
 
-Submit = Callable[[str, str, str], Awaitable[Any]]
+Submit = Callable[..., Awaitable[Any]]
 Wait = Callable[[str], Awaitable[Mapping[str, Any]]]
 ListInteractions = Callable[[str], Awaitable[Sequence[Mapping[str, Any]]]]
 DecideInteraction = Callable[[str, str, str, ChannelBinding], Awaitable[Any]]
@@ -662,7 +663,12 @@ class ChannelGateway:
                     self.context_chars,
                     shared_context=shared_context,
                 )
-                run = await self.submit(binding.bot_name, prompt, f"channel:{binding.kind}:{binding.id}")
+                run = await self._submit_event(
+                    binding.bot_name,
+                    prompt,
+                    f"channel:{binding.kind}:{binding.id}",
+                    f"channel-{event.id}",
+                )
                 run_id = _run_id(run)
                 if not run_id:
                     raise ChannelError("engine returned no run identifier")
@@ -729,6 +735,21 @@ class ChannelGateway:
                     await deliver(binding, event, interaction)
                 delivered.add(interaction_id)
             await asyncio.sleep(0.35)
+
+    async def _submit_event(
+        self,
+        bot_name: str,
+        prompt: str,
+        actor: str,
+        run_id: str,
+    ) -> Any:
+        try:
+            parameters = inspect.signature(self.submit).parameters
+        except (TypeError, ValueError):
+            parameters = {}
+        if "run_id" in parameters:
+            return await self.submit(bot_name, prompt, actor, run_id=run_id)
+        return await self.submit(bot_name, prompt, actor)
 
     async def _shared_context(
         self, binding: ChannelBinding, event: ChannelEvent

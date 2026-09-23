@@ -193,8 +193,15 @@ def test_coordinator_executes_dependencies_and_bounds_parallel_fanout(tmp_path) 
 
         assert completed.status == "succeeded"
         assert submit_order[0] == "research"
-        assert set(submit_order[1:3]) == {"build", "review"}
-        assert submit_order[3] == "final"
+        public_prompts = [
+            prompt.rsplit("</dependency_context>\n\n", 1)[-1]
+            for prompt in submit_order
+        ]
+        assert set(public_prompts[1:3]) == {"build", "review"}
+        assert public_prompts[3] == "final"
+        assert "## research (researcher)" in submit_order[1]
+        assert "## research (researcher)" in submit_order[2]
+        assert "## research (researcher)" in submit_order[3]
         assert max_active == 2
         assert [node.status for node in service.nodes(plan.id)] == [
             "succeeded",

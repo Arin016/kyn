@@ -153,6 +153,9 @@ class AcpRuntime:
             raise
         return request_id
 
+    def unroute(self, request_id: int) -> None:
+        self._routed.pop(request_id, None)
+
     async def notify(self, method: str, params: dict[str, Any]) -> None:
         await self._write({"jsonrpc": "2.0", "method": method, "params": params})
 
@@ -294,15 +297,18 @@ class AcpRuntime:
 
         params = message.get("params") if isinstance(message.get("params"), dict) else {}
         session_id = str(params.get("sessionId") or "")
+        if request_id is not None and message.get("method") == REQUEST_PERMISSION:
+            if session_id and session_id in self._queues:
+                await self._queues[session_id].put(message)
+            else:
+                await self.respond(
+                    request_id,
+                    {"outcome": {"outcome": "cancelled"}},
+                )
+            return
         if session_id and session_id in self._queues:
             await self._queues[session_id].put(message)
             return
-
-            if request_id is not None and message.get("method") == REQUEST_PERMISSION:
-                # A request with no visible owner must be answered fail-closed. If it
-                # is dropped, the agent can remain blocked forever waiting for the client.
-                await self.respond(request_id, {"outcome": {"outcome": "cancelled"}})
-                return
 
         if not session_id:
             for queue in list(self._queues.values()):

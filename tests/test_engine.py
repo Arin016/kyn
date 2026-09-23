@@ -20,7 +20,7 @@ from kyn.workspaces import WorkspaceExecutionSpec, WorkspaceManager
 
 
 async def _wait_for_status(engine: Engine, run_id: str, status: str) -> dict:
-    for _ in range(200):
+    for _ in range(400):
         snapshot = await engine.get_run(run_id)
         if snapshot["status"] == status:
             return snapshot
@@ -106,6 +106,8 @@ class FakeOrchestrator:
                 await asyncio.Event().wait()
             if public_message == "fail":
                 raise RuntimeError("simulated turn failure")
+            if public_message == "quota-fail":
+                raise RuntimeError("Rate limit exceeded: free-models-per-day")
             if public_message == "workspace-write":
                 assert self.cwd is not None
                 Path(self.cwd, "artifact.txt").write_text(
@@ -155,6 +157,93 @@ def test_same_bot_is_fifo_and_reuses_one_orchestrator() -> None:
             await _wait_for_status(engine, second, "complete")
             assert hub.starts == [("alpha", "first"), ("alpha", "second")]
             assert list(hub.instances) == ["alpha"]
+        finally:
+            await engine.close()
+
+    asyncio.run(scenario())
+
+
+def test_provider_failure_fails_over_to_configured_engine(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        hub = FakeHub()
+        store = Store(tmp_path / "store")
+        store.put_bot(Bot("alpha", str(tmp_path), engine="kiro"))
+        governance = GovernanceStore(store)
+        governance.set_policy("alpha", Policy(auto_failover=True, failover_engines=("opencode",)))
+        engine = Engine(store=store, governance=governance, orchestrator_factory=hub.factory)
+        await engine.start()
+        try:
+            first = await engine.submit("alpha", "quota-fail")
+            complete = await _wait_for_status(engine, first, "complete")
+            assert complete["failover_attempts"] == 1
+            assert list(engine._runs) == [first]
+            assert store.get_bot("alpha").engine == "opencode"  # type: ignore[union-attr]
+            assert [prompt for _, prompt in hub.starts].count("quota-fail") == 2
+        finally:
+            await engine.close()
+
+    asyncio.run(scenario())
+
+
+def test_failover_does_not_cycle_back_to_an_attempted_engine(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        hub = FakeHub()
+        store = Store(tmp_path / "store")
+        store.put_bot(Bot("alpha", str(tmp_path), engine="kiro"))
+        governance = GovernanceStore(store)
+        governance.set_policy(
+            "alpha",
+            Policy(auto_failover=True, failover_engines=("opencode", "kiro")),
+        )
+        engine = Engine(store=store, governance=governance, orchestrator_factory=hub.factory)
+        await engine.start()
+        try:
+            run_id = await engine.submit("alpha", "quota-fail")
+            failed = await _wait_for_status(engine, run_id, "failed")
+            assert failed["failover_attempts"] == 1
+            assert engine._runs[run_id].failover_engines == ("kiro",)
+            assert store.get_bot("alpha").engine == "opencode"  # type: ignore[union-attr]
+            assert [prompt for _, prompt in hub.starts] == ["quota-fail", "quota-fail"]
+        finally:
+            await engine.close()
+
+    asyncio.run(scenario())
+
+
+def test_explicit_run_id_is_idempotent_across_retries(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        hub = FakeHub()
+        store = Store(tmp_path / "store")
+        store.put_bot(Bot("alpha", str(tmp_path)))
+        engine = Engine(store=store, orchestrator_factory=hub.factory)
+        await engine.start()
+        try:
+            first = await engine.submit("alpha", "work", run_id="fixed-run")
+            await _wait_for_status(engine, first, "complete")
+            second = await engine.submit("alpha", "work", run_id="fixed-run")
+            assert second == first
+            assert hub.starts == [("alpha", "work")]
+            with pytest.raises(ValueError, match="different work"):
+                await engine.submit("alpha", "different", run_id="fixed-run")
+        finally:
+            await engine.close()
+
+    asyncio.run(scenario())
+
+
+def test_failed_run_without_failover_policy_stays_failed(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        hub = FakeHub()
+        store = Store(tmp_path / "store")
+        store.put_bot(Bot("alpha", str(tmp_path), engine="kiro"))
+        engine = Engine(store=store, orchestrator_factory=hub.factory)
+        await engine.start()
+        try:
+            first = await engine.submit("alpha", "quota-fail")
+            await _wait_for_status(engine, first, "failed")
+            await asyncio.sleep(0.05)
+            assert store.get_bot("alpha").engine == "kiro"  # type: ignore[union-attr]
+            assert [run_id for run_id in engine._runs] == [first]
         finally:
             await engine.close()
 
@@ -882,3 +971,56 @@ def _make_repo(tmp_path: Path) -> Path:
         ["git", "-C", str(repo), "commit", "-qm", "base"], check=True
     )
     return repo
+
+
+def test_set_bot_model_updates_store_and_live_session(tmp_path: Path) -> None:
+    from types import SimpleNamespace
+
+    async def scenario() -> None:
+        store = Store(tmp_path / "store")
+        store.put_bot(Bot("alpha", str(tmp_path), engine="kiro"))
+        store.put_bot(Bot("beta", str(tmp_path), engine="opencode"))
+        engine = Engine(store=store, orchestrator_factory=FakeHub().factory)
+        await engine.start()
+        try:
+            calls: list[tuple[str, str]] = []
+
+            async def fake_set_model(model: str) -> None:
+                calls.append(("set_model", model))
+
+            async def fake_set_config(config_id: str, value: str) -> None:
+                calls.append((config_id, value))
+
+            async def fake_close() -> None:
+                return None
+
+            kiro_session = FakeSession()
+            kiro_session.set_model = fake_set_model  # type: ignore[attr-defined]
+            engine._workers["alpha"] = SimpleNamespace(
+                orchestrator=SimpleNamespace(session=kiro_session), close=fake_close
+            )
+            oc_session = FakeSession()
+            oc_session.set_config_option = fake_set_config  # type: ignore[attr-defined]
+            engine._workers["beta"] = SimpleNamespace(
+                orchestrator=SimpleNamespace(session=oc_session), close=fake_close
+            )
+
+            result = await engine.set_bot_model("alpha", "claude-new")
+            assert result == {"model": "claude-new", "applied_live": True}
+            assert calls == [("set_model", "claude-new")]
+            assert store.get_bot("alpha").model == "claude-new"  # type: ignore[union-attr]
+
+            calls.clear()
+            result = await engine.set_bot_model("beta", "opencode/big-pickle")
+            assert result == {"model": "opencode/big-pickle", "applied_live": True}
+            assert calls == [("model", "opencode/big-pickle")]
+
+            result = await engine.set_bot_model("alpha", "")
+            assert result == {"model": "", "applied_live": False}
+
+            with pytest.raises(KeyError):
+                await engine.set_bot_model("ghost", "x")
+        finally:
+            await engine.close()
+
+    asyncio.run(scenario())

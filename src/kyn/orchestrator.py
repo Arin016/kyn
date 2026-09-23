@@ -143,7 +143,7 @@ class BotOrchestrator:
             await self.open(bot_name, cwd=self._cwd_override)
             if self.bot is None or self.session is None:
                 raise AcpError("could not refresh bot after plugin configuration changed")
-        turn_id = self.store.begin_turn(self.bot.name, message)
+        turn_id = self.store.begin_turn(self.bot.name, message, engine=self.bot.engine)
         sequence = 0
         stop_reason = ""
         try:

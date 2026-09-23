@@ -49,6 +49,15 @@ def test_display_prompt_returns_only_the_user_request() -> None:
     assert "Current request:" not in displayed
 
 
+def test_display_prompt_unwraps_channel_threads() -> None:
+    composed = compose_execution_prompt(
+        "You are responding through an authenticated external channel.\n\n"
+        "Previous thread context:\nUser: old\n\n"
+        "Latest request from arin:\nfix the failing test"
+    )
+    assert display_prompt(composed) == "fix the failing test"
+
+
 def test_display_prompt_is_safe_for_plain_text() -> None:
     assert display_prompt("  just a message  ") == "just a message"
     assert display_prompt("") == ""

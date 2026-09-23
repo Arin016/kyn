@@ -67,6 +67,7 @@ class AcpSession:
         async with self._turn_lock:
             self._active = True
             self._tool_identities.clear()
+            self._permission_options.clear()
             request_id = await self.runtime.routed_request(
                 SESSION_PROMPT,
                 {"sessionId": self.session_id, "prompt": text_prompt(message)},
@@ -111,6 +112,8 @@ class AcpSession:
                         yield Event(kind="protocol", raw=frame)
             finally:
                 self._active = False
+                self._permission_options.clear()
+                self.runtime.unroute(request_id)
 
     async def approve(self, request_id: str | int, *, always: bool = False) -> None:
         options = self._permission_options.pop(request_id, [])

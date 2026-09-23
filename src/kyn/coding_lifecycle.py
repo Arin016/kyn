@@ -771,6 +771,7 @@ def _review_prompt(task: str, cwd: Path, request: ReviewRequest) -> str:
     patch = _git_output(cwd, "diff", "--no-ext-diff", "--unified=3", "HEAD")
     if len(patch) > 80_000:
         patch = patch[:80_000] + "\n...[patch truncated]"
+    untracked = _untracked_context(cwd)
     checks = [record.snapshot() for record in request.records[-20:]]
     return (
         "Perform a read-only independent review. Do not modify files and do not run any "
@@ -778,7 +779,8 @@ def _review_prompt(task: str, cwd: Path, request: ReviewRequest) -> str:
         "whether the task is actually satisfied. Return ONLY one JSON object with keys "
         "approved (boolean), summary (string), findings (array of strings), and "
         "blocking_findings (array of strings).\n\n"
-        f"TASK:\n{task}\n\nCHECKS:\n{_canonical_json(checks)}\n\nPATCH:\n{patch}"
+        f"TASK:\n{task}\n\nCHECKS:\n{_canonical_json(checks)}\n\nPATCH:\n{patch}\n\n"
+        f"UNTRACKED:\n{untracked or 'none'}"
     )
 
 
@@ -818,7 +820,65 @@ def _parse_review(text: str) -> ReviewResult:
 def _git_fingerprint(cwd: Path) -> str:
     payload = _git_output(cwd, "status", "--porcelain=v1", "-z")
     payload += _git_output(cwd, "diff", "--binary", "HEAD")
+    for path in _untracked_paths(cwd):
+        payload += "\0" + path + "\0" + _path_digest(cwd, path)
     return hashlib.sha256(payload.encode("utf-8", "surrogateescape")).hexdigest()
+
+
+def _untracked_paths(cwd: Path) -> list[str]:
+    return [
+        path
+        for path in _git_output(cwd, "ls-files", "--others", "--exclude-standard", "-z").split("\0")
+        if path
+    ]
+
+
+def _path_digest(cwd: Path, path: str) -> str:
+    root = cwd.resolve()
+    raw_target = root / path
+    target = raw_target.resolve()
+    try:
+        target.relative_to(root)
+    except ValueError:
+        return "outside"
+    if raw_target.is_symlink():
+        return f"symlink:{os.readlink(raw_target)}"
+    if not target.is_file():
+        return "missing"
+    digest = hashlib.sha256()
+    with target.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _untracked_context(cwd: Path, limit: int = 40_000) -> str:
+    blocks: list[str] = []
+    used = 0
+    for path in _untracked_paths(cwd):
+        root = cwd.resolve()
+        raw_target = root / path
+        target = raw_target.resolve()
+        try:
+            target.relative_to(root)
+        except ValueError:
+            continue
+        if raw_target.is_symlink():
+            content = f"symlink -> {os.readlink(raw_target)}"
+        elif target.is_file():
+            try:
+                content = target.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                content = "<unreadable>"
+        else:
+            content = "<not a regular file>"
+        block = f"--- {path} ---\n{content}"
+        if used + len(block) > limit:
+            blocks.append(f"--- {path} ---\n<omitted>")
+            break
+        blocks.append(block)
+        used += len(block)
+    return "\n\n".join(blocks)
 
 
 def _git_output(cwd: Path, *args: str) -> str:

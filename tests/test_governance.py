@@ -137,6 +137,48 @@ def test_audit_rejects_unbounded_or_free_form_reason(tmp_path) -> None:
         )
 
 
+def test_failover_policy_round_trip_and_migration(tmp_path) -> None:
+    governance = _governance(tmp_path)
+    governance.set_policy("builder", Policy(auto_failover=True, failover_engines=("opencode", "codex")))
+    policy = governance.get_policy("builder")
+    assert policy.auto_failover is True
+    assert policy.failover_engines == ("opencode", "codex")
+    assert governance.get_policy("other") == Policy()
+
+    legacy_home = tmp_path / "legacy"
+    legacy_home.mkdir()
+    connection = sqlite3.connect(legacy_home / "kyn.db")
+    try:
+        connection.execute(
+            """
+            CREATE TABLE governance_policies (
+                bot_name TEXT PRIMARY KEY,
+                approval_mode TEXT NOT NULL,
+                allowed_tools_json TEXT NOT NULL DEFAULT '[]',
+                denied_tools_json TEXT NOT NULL DEFAULT '[]',
+                max_turns_per_hour INTEGER NOT NULL DEFAULT 0,
+                max_concurrent_runs INTEGER NOT NULL DEFAULT 0,
+                max_daily_runs INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    legacy = GovernanceStore(Store(legacy_home))
+    assert legacy.get_policy("builder") == Policy()
+    legacy.set_policy("builder", Policy(auto_failover=True, failover_engines=("kiro",)))
+    assert legacy.get_policy("builder").failover_engines == ("kiro",)
+
+
+def test_failover_policy_rejects_unknown_engines(tmp_path) -> None:
+    governance = _governance(tmp_path)
+    with pytest.raises(ValueError):
+        governance.set_policy("builder", Policy(auto_failover=True, failover_engines=("cursor",)))
+
+
 def test_startup_reconciliation_releases_terminal_and_missing_leases(tmp_path) -> None:
     governance = _governance(tmp_path, Policy(max_concurrent_runs=2))
     from kyn.run_store import RunRepository

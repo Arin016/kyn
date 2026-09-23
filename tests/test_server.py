@@ -632,6 +632,19 @@ def test_directories_route_lists_subdirectories(tmp_path: Path) -> None:
         assert client.get("/api/directories", params={"path": "relative/path"}).status_code == 422
 
 
+def test_bot_model_route_updates_stored_model(tmp_path: Path) -> None:
+    store = Store(tmp_path / "store")
+    store.put_bot(Bot("builder", str(tmp_path), engine="opencode"))
+    app = create_app(store, FakeEngine())
+    with _test_client(app) as client:
+        response = client.post("/api/bots/builder/model", json={"model": "opencode/big-pickle"})
+        assert response.status_code == 200
+        body = response.json()
+        assert body == {"bot": "builder", "model": "opencode/big-pickle", "applied_live": False}
+        assert store.get_bot("builder").model == "opencode/big-pickle"  # type: ignore[union-attr]
+        assert client.post("/api/bots/missing/model", json={"model": "x"}).status_code == 404
+
+
 def test_handoff_route_compiles_portable_bundle(tmp_path: Path) -> None:
     import subprocess
 
@@ -664,3 +677,37 @@ def test_handoff_route_compiles_portable_bundle(tmp_path: Path) -> None:
         assert bundle["to_engine"] == "opencode"
         assert "value = 2" in bundle["prompt"]
         assert client.post("/api/bots/missing/handoff", json={"to_engine": "opencode"}).status_code == 404
+
+
+def test_usage_route_sums_reported_tokens(tmp_path: Path) -> None:
+    from kyn.protocol import Event
+
+    store = Store(tmp_path / "store")
+    store.put_bot(Bot("builder", str(tmp_path)))
+    turn_id = store.begin_turn("builder", "do work")
+    store.add_event(
+        turn_id,
+        1,
+        Event(
+            kind="usage",
+            raw={
+                "params": {
+                    "update": {
+                        "sessionUpdate": "usage_update",
+                        "used": 1500,
+                        "cost": {"amount": 0.02, "currency": "USD"},
+                    }
+                }
+            },
+        ),
+    )
+    store.finish_turn(turn_id, "complete", "end_turn")
+    app = create_app(store, FakeEngine())
+    with _test_client(app) as client:
+        response = client.get("/api/bots/builder/usage")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["turns"] == 1
+        assert body["tokens"] == 1500
+        assert body["cost"]["amount"] == 0.02
+        assert client.get("/api/bots/missing/usage").status_code == 404

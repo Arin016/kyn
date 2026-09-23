@@ -133,11 +133,11 @@ class Store:
                 (bot_name, session_id, transcript_path, _now()),
             )
 
-    def begin_turn(self, bot_name: str, prompt: str) -> int:
+    def begin_turn(self, bot_name: str, prompt: str, engine: str = "") -> int:
         with self.connect() as db:
             cursor = db.execute(
-                "INSERT INTO turns(bot_name, prompt, started_at) VALUES (?, ?, ?)",
-                (bot_name, prompt, _now()),
+                "INSERT INTO turns(bot_name, prompt, engine, started_at) VALUES (?, ?, ?, ?)",
+                (bot_name, prompt, normalize_engine(engine) if engine else "", _now()),
             )
             return int(cursor.lastrowid)
 
@@ -173,7 +173,7 @@ class Store:
         with self.connect() as db:
             turns = db.execute(
                 """
-                SELECT id, bot_name, prompt, status, stop_reason,
+                SELECT id, bot_name, prompt, engine, status, stop_reason,
                        started_at, finished_at
                 FROM turns
                 WHERE bot_name = ?
@@ -196,6 +196,7 @@ class Store:
                         "id": turn["id"],
                         "bot_name": turn["bot_name"],
                         "prompt": display_prompt(str(turn["prompt"] or "")),
+                        "engine": turn["engine"] if "engine" in turn.keys() else "",
                         "status": turn["status"],
                         "stop_reason": turn["stop_reason"],
                         "started_at": turn["started_at"],
@@ -238,6 +239,7 @@ class Store:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     bot_name TEXT NOT NULL REFERENCES bots(name) ON DELETE CASCADE,
                     prompt TEXT NOT NULL,
+                    engine TEXT NOT NULL DEFAULT '',
                     status TEXT NOT NULL DEFAULT 'running',
                     stop_reason TEXT NOT NULL DEFAULT '',
                     started_at TEXT NOT NULL,
@@ -260,6 +262,12 @@ class Store:
             }
             if "engine" not in columns:
                 db.execute("ALTER TABLE bots ADD COLUMN engine TEXT NOT NULL DEFAULT 'kiro'")
+            turn_columns = {
+                str(row["name"])
+                for row in db.execute("PRAGMA table_info(turns)").fetchall()
+            }
+            if "engine" not in turn_columns:
+                db.execute("ALTER TABLE turns ADD COLUMN engine TEXT NOT NULL DEFAULT ''")
 
 
 def _now() -> str:

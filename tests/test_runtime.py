@@ -51,6 +51,30 @@ def test_permission_round_trip(tmp_path: Path) -> None:
     asyncio.run(scenario())
 
 
+def test_unknown_permission_request_is_cancelled_fail_closed(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        runtime = AcpRuntime(tmp_path)
+        responses: list[tuple[str | int, dict]] = []
+
+        async def respond(request_id: str | int, result: dict) -> None:
+            responses.append((request_id, result))
+
+        runtime.respond = respond  # type: ignore[method-assign]
+        await runtime._route(
+            {
+                "jsonrpc": "2.0",
+                "id": "permission-1",
+                "method": "session/request_permission",
+                "params": {"sessionId": "missing", "toolCall": {}},
+            }
+        )
+        assert responses == [
+            ("permission-1", {"outcome": {"outcome": "cancelled"}})
+        ]
+
+    asyncio.run(scenario())
+
+
 def test_acp_trace_recursively_redacts_launch_secrets(monkeypatch, capsys) -> None:
     monkeypatch.setenv("KYN_TRACE", "1")
     AcpRuntime._trace(

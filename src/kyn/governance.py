@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
+from .providers import normalize_engine
 from .store import Store
 
 
@@ -37,6 +38,11 @@ class Policy:
     max_turns_per_hour: int = 0
     max_concurrent_runs: int = 0
     max_daily_runs: int = 0
+    # Automatic engine failover after a provider-side failure (rate limit or
+    # rejected credentials). Off by default; failover_engines lists fallback
+    # engines in preference order.
+    auto_failover: bool = False
+    failover_engines: tuple[str, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,8 +85,9 @@ class GovernanceStore:
                 INSERT INTO governance_policies(
                     bot_name, approval_mode, allowed_tools_json, denied_tools_json,
                     max_turns_per_hour, max_concurrent_runs, max_daily_runs,
+                    auto_failover, failover_engines_json,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(bot_name) DO UPDATE SET
                     approval_mode=excluded.approval_mode,
                     allowed_tools_json=excluded.allowed_tools_json,
@@ -88,6 +95,8 @@ class GovernanceStore:
                     max_turns_per_hour=excluded.max_turns_per_hour,
                     max_concurrent_runs=excluded.max_concurrent_runs,
                     max_daily_runs=excluded.max_daily_runs,
+                    auto_failover=excluded.auto_failover,
+                    failover_engines_json=excluded.failover_engines_json,
                     updated_at=excluded.updated_at
                 """,
                 (
@@ -98,6 +107,8 @@ class GovernanceStore:
                     normalized.max_turns_per_hour,
                     normalized.max_concurrent_runs,
                     normalized.max_daily_runs,
+                    int(normalized.auto_failover),
+                    json.dumps(normalized.failover_engines),
                     now,
                     now,
                 ),
@@ -112,6 +123,7 @@ class GovernanceStore:
             ).fetchone()
         if row is None:
             return Policy()
+        columns = set(row.keys())
         return Policy(
             approval_mode=row["approval_mode"],
             allowed_tools=tuple(json.loads(row["allowed_tools_json"])),
@@ -119,6 +131,12 @@ class GovernanceStore:
             max_turns_per_hour=int(row["max_turns_per_hour"]),
             max_concurrent_runs=int(row["max_concurrent_runs"]),
             max_daily_runs=int(row["max_daily_runs"]),
+            auto_failover=bool(row["auto_failover"]) if "auto_failover" in columns else False,
+            failover_engines=(
+                tuple(json.loads(row["failover_engines_json"] or "[]"))
+                if "failover_engines_json" in columns
+                else ()
+            ),
         )
 
     def evaluate_tool(
@@ -470,6 +488,8 @@ class GovernanceStore:
                     max_turns_per_hour INTEGER NOT NULL DEFAULT 0 CHECK(max_turns_per_hour >= 0),
                     max_concurrent_runs INTEGER NOT NULL DEFAULT 0 CHECK(max_concurrent_runs >= 0),
                     max_daily_runs INTEGER NOT NULL DEFAULT 0 CHECK(max_daily_runs >= 0),
+                    auto_failover INTEGER NOT NULL DEFAULT 0,
+                    failover_engines_json TEXT NOT NULL DEFAULT '[]',
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
@@ -514,6 +534,14 @@ class GovernanceStore:
                 END;
                 """
             )
+            columns = {
+                str(row["name"])
+                for row in db.execute("PRAGMA table_info(governance_policies)").fetchall()
+            }
+            if "auto_failover" not in columns:
+                db.execute("ALTER TABLE governance_policies ADD COLUMN auto_failover INTEGER NOT NULL DEFAULT 0")
+            if "failover_engines_json" not in columns:
+                db.execute("ALTER TABLE governance_policies ADD COLUMN failover_engines_json TEXT NOT NULL DEFAULT '[]'")
 
 
 def _normalize_policy(policy: Policy) -> Policy:
@@ -526,6 +554,15 @@ def _normalize_policy(policy: Policy) -> Policy:
     )
     if any(not isinstance(value, int) or isinstance(value, bool) or value < 0 for value in quotas):
         raise ValueError("quota values must be non-negative integers")
+    if not isinstance(policy.auto_failover, bool):
+        raise TypeError("auto_failover must be a boolean")
+    engines = tuple(
+        dict.fromkeys(
+            normalize_engine(str(value))
+            for value in policy.failover_engines
+            if str(value).strip()
+        )
+    )
     return Policy(
         approval_mode=policy.approval_mode,
         allowed_tools=tuple(sorted({_tool_name(value) for value in policy.allowed_tools})),
@@ -533,6 +570,8 @@ def _normalize_policy(policy: Policy) -> Policy:
         max_turns_per_hour=policy.max_turns_per_hour,
         max_concurrent_runs=policy.max_concurrent_runs,
         max_daily_runs=policy.max_daily_runs,
+        auto_failover=policy.auto_failover,
+        failover_engines=engines,
     )
 
 
