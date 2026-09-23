@@ -32,6 +32,7 @@ from .plugins import PluginRegistry, PluginRegistryError
 from .run_store import RunRepository
 from .routines import RoutineNotFound, RoutineStore, Scheduler
 from .memory import SharedMemoryStore
+from .chief import ensure_chief_of_staff
 from .internal_control import CONTROL_PLUGIN_ID, ensure_bot_control, ensure_internal_control
 from .groups import GroupCoordinator, GroupNotFound, GroupStore
 from .interactions import InteractionConflict, InteractionNotFound, InteractionStore
@@ -101,6 +102,12 @@ if FastAPI is not None:
 
     class TurnBody(BaseModel):
         message: str = Field(min_length=1)
+
+    class UpdateBotBody(BaseModel):
+        model: str | None = None
+        effort: str | None = None
+        agent: str | None = None
+        cwd: str | None = None
 
 
     class BotModelBody(BaseModel):
@@ -298,6 +305,7 @@ def create_app(
     active_governance = governance or GovernanceStore(active_store)
     active_plugins = plugins or PluginRegistry(active_store)
     ensure_internal_control(active_store, active_plugins)
+    ensure_chief_of_staff(active_store, active_plugins)
     active_routines = routines or RoutineStore(active_store)
     active_delegations = delegations or DelegationStore(active_store)
     active_runs = RunRepository(active_store)
@@ -666,10 +674,68 @@ def create_app(
         ensure_bot_control(active_plugins, bot.name)
         return _bot_payload(bot)
 
+    @app.delete("/api/bots/{name}", status_code=200)
+    async def delete_bot(name: str) -> dict[str, Any]:
+        """Delete a bot permanently; routines and bindings go with it."""
+        bot = _require_bot(active_store, name)
+        for routine in active_routines.list(bot_name=bot.name):
+            active_routines.delete(str(getattr(routine, "id", "")))
+        for binding in active_plugins.binding_summaries(bot.name):
+            active_plugins.unbind_plugin(bot.name, str(binding.get("plugin_id") or ""))
+        try:
+            active_governance.set_policy(
+                bot.name,
+                Policy(
+                    approval_mode="deny_all",
+                    allowed_tools=(),
+                    denied_tools=("*",),
+                    max_turns_per_hour=1,
+                    max_concurrent_runs=1,
+                    max_daily_runs=1,
+                ),
+            )
+        except (TypeError, ValueError):
+            pass
+        with active_store.connect() as db:
+            cursor = db.execute("DELETE FROM bots WHERE name = ?", (bot.name,))
+            deleted = bool(cursor.rowcount)
+        if not deleted:
+            raise HTTPException(status_code=404, detail=f"bot {name!r} was not found")
+        return {"deleted": True, "name": bot.name}
+
     @app.get("/api/bots/{name}")
     async def get_bot(name: str) -> dict[str, Any]:
         bot = _require_bot(active_store, name)
         return _bot_payload(bot)
+
+    @app.patch("/api/bots/{name}")
+    async def update_bot(name: str, body: UpdateBotBody) -> dict[str, Any]:
+        """Reconfigure a bot in place; omitted fields are preserved."""
+        bot = _require_bot(active_store, name)
+        cwd = bot.cwd
+        if body.cwd is not None and body.cwd != bot.cwd:
+            cwd = _validate_working_directory(body.cwd)
+        model = bot.model if body.model is None else body.model.strip()
+        updated = Bot(
+            name=bot.name,
+            cwd=cwd,
+            agent=bot.agent if body.agent is None else body.agent.strip(),
+            model=model,
+            effort=bot.effort if body.effort is None else body.effort.strip(),
+            engine=bot.engine,
+            mcp_servers=bot.mcp_servers,
+        )
+        active_store.put_bot(updated)
+        applied_live = False
+        if body.model is not None and model != bot.model:
+            switch = getattr(active_engine, "set_bot_model", None)
+            if switch is not None:
+                try:
+                    result = await _maybe_await(switch(name, model))
+                    applied_live = bool(result.get("applied_live")) if isinstance(result, dict) else False
+                except KeyError:
+                    applied_live = False
+        return {**_bot_payload(updated), "applied_live": applied_live}
 
     @app.get("/api/directories")
     async def list_directories(path: str = Query(default="")) -> dict[str, Any]:

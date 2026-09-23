@@ -18,8 +18,8 @@ CONTROL_TOOLS = (
 )
 
 
-def ensure_internal_control(store: Store, plugins: PluginRegistry) -> None:
-    """Install the reserved host-control MCP and bind it to every named bot."""
+def ensure_control_plugin(plugins: PluginRegistry) -> None:
+    """Install (or repair) the reserved host-control MCP itself."""
 
     desired = Plugin(
         id=CONTROL_PLUGIN_ID,
@@ -49,6 +49,12 @@ def ensure_internal_control(store: Store, plugins: PluginRegistry) -> None:
             env={},
             enabled=True,
         )
+
+
+def ensure_internal_control(store: Store, plugins: PluginRegistry) -> None:
+    """Install the reserved host-control MCP and bind it to every named bot."""
+
+    ensure_control_plugin(plugins)
     for bot in store.list_bots():
         ensure_bot_control(plugins, bot.name)
 
