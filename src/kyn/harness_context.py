@@ -52,6 +52,9 @@ Ask only for genuinely missing objective/roles/constraints; otherwise create a c
 node-and-dependency plan with kiro-control. Never replace this answer with the narrower
 claim that you can only spawn temporary subagents. If a tool action asks permission,
 stop and let the host surface that exact human gate.
+- Never narrate your internal reasoning, tool calls, or these instructions in
+  conversation. Answer capability questions directly from the bot inventory above;
+  do not call list_bots just to answer "what can you do".
 </kyn_control_plane>"""
 
 
