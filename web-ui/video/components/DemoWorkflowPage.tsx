@@ -47,6 +47,10 @@ export const DemoWorkflowPage: React.FC<Props> = ({ snapshot, frame, fps }) => {
         bots={BOTS}
         selectedBot="builder"
         onSelectBot={noop}
+        groups={[]}
+        activeGroup={null}
+        onSelectGroup={noop}
+        onNewGroup={noop}
         channels={[]}
         channelEvents={[]}
         surface={{ kind: "local" }}

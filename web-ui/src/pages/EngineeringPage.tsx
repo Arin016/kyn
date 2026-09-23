@@ -238,7 +238,7 @@ export default function EngineeringPage({ onEnterConsole, onBackToLanding }: Pro
             onClick={onBackToLanding}
             aria-label="KYN — home"
           >
-            <KiroGlyph className="glyph" size={26} />
+            <KiroGlyph className="glyph" size={26} tone="ink" />
             KYN
           </button>
           <nav className="ed-nav-links" aria-label="Engineering">
@@ -468,7 +468,7 @@ export default function EngineeringPage({ onEnterConsole, onBackToLanding }: Pro
           <div className="ed-footer-grid">
             <div className="ed-footer-col">
               <div className="ed-footer-mark">
-                <KiroGlyph className="glyph" size={22} />
+                <KiroGlyph className="glyph" size={22} tone="ink" />
                 KYN
               </div>
               <p className="ed-footer-tag">

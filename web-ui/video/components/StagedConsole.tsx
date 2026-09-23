@@ -62,6 +62,10 @@ export const StagedConsole: React.FC<Props> = ({ snapshot }) => {
         bots={BOTS}
         selectedBot="builder"
         onSelectBot={noop}
+        groups={[]}
+        activeGroup={null}
+        onSelectGroup={noop}
+        onNewGroup={noop}
         channels={snapshot.channels}
         channelEvents={snapshot.channelEvents}
         surface={snapshot.surface}

@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { KiroGlyph } from "../components/KiroGlyph";
-import { PixelKiro } from "../components/PixelKiro";
 
 type Persona = {
   role: string;
@@ -159,9 +158,10 @@ function PersonaCard({ persona, index }: { persona: Persona; index: number }) {
 interface Props {
   onEnterConsole: () => void;
   onOpenEngineering: () => void;
+  onTryDemo: () => void;
 }
 
-export default function LandingPage({ onEnterConsole, onOpenEngineering }: Props) {
+export default function LandingPage({ onEnterConsole, onOpenEngineering, onTryDemo }: Props) {
   const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
@@ -191,7 +191,7 @@ export default function LandingPage({ onEnterConsole, onOpenEngineering }: Props
             }}
             aria-label="KYN — home"
           >
-            <KiroGlyph className="glyph" size={26} />
+            <KiroGlyph className="glyph" size={26} tone="ink" />
             KYN
           </button>
           <nav className="ed-nav-links" aria-label="Primary">
@@ -206,10 +206,12 @@ export default function LandingPage({ onEnterConsole, onOpenEngineering }: Props
       </header>
 
       <main id="main">
-        {/* HERO — two-column, Kiro-style */}
+        {/* HERO — paper canvas, ink mark watermark */}
         <section className="ed-hero-stage">
-          <PixelKiro />
-          <div className="ed-hero-vignette" aria-hidden="true" />
+          <div className="ed-hero-canvas" aria-hidden="true">
+            <KiroGlyph className="ed-hero-mark" size={560} tone="ink" />
+            <div className="ed-hero-vignette" />
+          </div>
           <div className="ed-container ed-hero-2col">
           <div className="ed-hero">
             <motion.p
@@ -252,6 +254,23 @@ export default function LandingPage({ onEnterConsole, onOpenEngineering }: Props
               <button type="button" className="ed-btn ed-btn-secondary" onClick={() => scrollTo("roster")}>
                 See what it can do ↓
               </button>
+              <button type="button" className="ed-btn ed-btn-secondary" onClick={onTryDemo}>
+                Try the shareable demo →
+              </button>
+            </motion.div>
+            <motion.div
+              className="ed-hero-strip"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.3 }}
+            >
+              {["durable sessions", "group chats", "per-tool approvals", "routines", "channels"].map(
+                (item) => (
+                  <span className="ed-hero-chip" key={item}>
+                    {item}
+                  </span>
+                ),
+              )}
             </motion.div>
           </div>
 
@@ -437,7 +456,7 @@ $ `}<span className="cmd">uv run kyn serve</span>{`   `}<span className="cmt">{`
           <div className="ed-footer-grid">
             <div className="ed-footer-col">
               <div className="ed-footer-mark">
-                <KiroGlyph className="glyph" size={22} />
+                <KiroGlyph className="glyph" size={22} tone="ink" />
                 KYN
               </div>
               <p className="ed-footer-tag">
