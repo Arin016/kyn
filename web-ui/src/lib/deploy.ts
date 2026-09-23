@@ -40,6 +40,10 @@ export const isMarketingDeploy =
     marketingFlag === true ||
     (env.PROD === true && marketingHost()));
 
+/** Explicit shareable-demo mode: mock console with no backend, even locally. */
+export const isDemoParam =
+  typeof location !== "undefined" && new URLSearchParams(location.search).get("demo") === "1";
+
 export async function backendReachable(): Promise<boolean> {
   if (isMarketingDeploy) return false;
   try {

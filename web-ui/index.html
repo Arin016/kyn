@@ -3,11 +3,28 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#08070b" />
-    <title>KYN</title>
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f4f7f3" />
+    <meta
+      name="description"
+      content="KYN is the local control plane for persistent Kiro agents: durable sessions, group chats, schedules, channels and per-tool approvals."
+    />
+    <title>KYN — control plane for persistent agents</title>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <script>
-      document.documentElement.dataset.theme = "dark";
+      // Pre-paint theme: paper by default, black mode if the user chose it.
+      // Namespaced so nothing else on the page can hijack `data-theme`.
+      (function () {
+        try {
+          var stored = window.localStorage.getItem("kyn-theme");
+          var theme = stored === "dark" ? "dark" : "light";
+          document.documentElement.setAttribute("data-kyn-theme", theme);
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute("content", theme === "dark" ? "#060806" : "#f4f7f3");
+        } catch (error) {
+          document.documentElement.setAttribute("data-kyn-theme", "light");
+        }
+      })();
     </script>
   </head>
   <body>

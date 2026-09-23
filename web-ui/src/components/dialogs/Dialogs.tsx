@@ -1,9 +1,18 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Modal } from "../ui/Modal";
+import { BotAvatar } from "../BotAvatar";
 import api from "../../api";
-import { csv, parseEnvReferences } from "../../lib/format";
 import type { Bot } from "../../types";
+import {
+  FieldGroup,
+  KeyValueRows,
+  NumberStepper,
+  SegmentedControl,
+  TagInput,
+  TilePicker,
+} from "../ui/Pickers";
+import type { KeyValueRow } from "../ui/Pickers";
 
 interface DialogProps {
   open: boolean;
@@ -31,7 +40,7 @@ const KIRO_AGENTS: { id: string; label: string; hint: string }[] = [
   { id: "debrief", label: "debrief", hint: "Extracts lessons after debugging/shipping" },
 ];
 
-const KIRO_MODELS: { id: string; label: string }[] = [
+export const KIRO_MODELS: { id: string; label: string }[] = [
   { id: "", label: "Kiro default model" },
   { id: "claude-sonnet-4-5", label: "Claude Sonnet 4.5" },
   { id: "claude-opus-4-1", label: "Claude Opus 4.1" },
@@ -51,14 +60,82 @@ const KIRO_EFFORT: { id: string; label: string; hint: string }[] = [
   { id: "max", label: "Max", hint: "Longest reasoning available" },
 ];
 
+const ENGINES: { id: string; label: string; hint: string }[] = [
+  { id: "kiro", label: "Kiro", hint: "Native Kiro ACP session with resume" },
+  { id: "opencode", label: "OpenCode", hint: "Native opencode acp session" },
+  { id: "codex", label: "Codex", hint: "Codex ACP bridge; requires codex-acp" },
+];
+
+function DirectoryBrowser({ initial, onPick }: { initial: string; onPick: (path: string) => void }) {
+  const [path, setPath] = useState("");
+  const [entries, setEntries] = useState<{ name: string; path: string; has_git: boolean }[]>([]);
+  const [error, setError] = useState("");
+
+  const load = async (next: string) => {
+    setError("");
+    try {
+      const listing = await api.directories(next);
+      setPath(listing.path);
+      setEntries(listing.entries);
+    } catch (exc) {
+      setError((exc as Error).message || "Could not list directory");
+    }
+  };
+
+  useEffect(() => {
+    void load(initial);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div className="dir-browser">
+      <div className="dir-browser__path" title={path}>{path || "…"}</div>
+      {error && <p className="form-error" role="alert">{error}</p>}
+      <div className="dir-browser__list">
+        {entries.length === 0 && <p className="activity-empty">No subdirectories.</p>}
+        {entries.map((entry) => (
+          <button key={entry.path} type="button" className="dir-browser__row" onClick={() => void load(entry.path)}>
+            <span className="dir-browser__name">{entry.name}</span>
+            {entry.has_git && <span className="dir-browser__git">git</span>}
+          </button>
+        ))}
+      </div>
+      <div className="dialog-actions">
+        <button type="button" className="btn btn-sm btn-primary" disabled={!path} onClick={() => onPick(path)}>
+          Use this folder
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function CreateBotDialog({ open, onClose, onDone }: DialogProps) {
   const [error, setError] = useState("");
+  const [name, setName] = useState("");
+  const [engine, setEngine] = useState<string>("kiro");
+  const [cwd, setCwd] = useState("");
+  const [browseOpen, setBrowseOpen] = useState(false);
   const [agent, setAgent] = useState("");
   const [model, setModel] = useState("");
   const [customModel, setCustomModel] = useState("");
+  const [modelText, setModelText] = useState("");
+  const [ocModels, setOcModels] = useState<{ id: string; label: string }[]>([]);
+  const [ocLoading, setOcLoading] = useState(false);
+  const [ocError, setOcError] = useState("");
   const [effort, setEffort] = useState("");
 
-  const modelValue = model === "__custom" ? customModel : model;
+  const modelValue = engine === "kiro" ? (model === "__custom" ? customModel : model) : modelText;
+
+  useEffect(() => {
+    if (!open || engine !== "opencode" || ocModels.length > 0) return;
+    setOcLoading(true);
+    setOcError("");
+    api
+      .engines("opencode")
+      .then((data) => setOcModels(data.models || []))
+      .catch((exc: Error) => setOcError(exc.message || "Could not load OpenCode models"))
+      .finally(() => setOcLoading(false));
+  }, [open, engine, ocModels.length]);
   const agentHint = KIRO_AGENTS.find((item) => item.id === agent)?.hint || "";
   const effortHint = KIRO_EFFORT.find((item) => item.id === effort)?.hint || "";
 
@@ -73,7 +150,8 @@ export function CreateBotDialog({ open, onClose, onDone }: DialogProps) {
           const values = formValues(form);
           const payload: Record<string, string> = {
             name: values.name,
-            cwd: values.cwd,
+            cwd,
+            engine,
           };
           if (agent) payload.agent = agent;
           if (modelValue) payload.model = modelValue;
@@ -81,7 +159,9 @@ export function CreateBotDialog({ open, onClose, onDone }: DialogProps) {
           try {
             await api.createBot(payload);
             form.reset();
-            setAgent(""); setModel(""); setCustomModel(""); setEffort("");
+            setName("");
+            setEngine("kiro"); setCwd(""); setBrowseOpen(false);
+            setAgent(""); setModel(""); setCustomModel(""); setModelText(""); setEffort("");
             onClose();
             onDone();
           } catch (exc) {
@@ -89,13 +169,89 @@ export function CreateBotDialog({ open, onClose, onDone }: DialogProps) {
           }
         }}
       >
-        <p className="dialog-copy">A bot keeps its Kiro session and conversation context between runs.</p>
+        <p className="dialog-copy">A bot keeps its native engine session and conversation context between runs.</p>
         <label>
-          Name <input name="name" autoComplete="off" required maxLength={60} placeholder="release-sherpa" />
+          Name
+          <span className="bot-identity">
+            <BotAvatar name={name || "kyn"} size={44} className="bot-identity__avatar" />
+            <input
+              name="name"
+              autoComplete="off"
+              required
+              maxLength={60}
+              placeholder="release-sherpa"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+            />
+          </span>
+          <span className="field-hint">
+            This mark is generated from the name — every bot gets its own face.
+          </span>
         </label>
         <label>
-          Working directory <input name="cwd" required placeholder="/Users/you/project" />
+          Working directory
+          <div className="dir-input-row">
+            <input
+              name="cwd"
+              required
+              value={cwd}
+              onChange={(event) => setCwd(event.target.value)}
+              placeholder="/Users/you/project"
+            />
+            <button type="button" className="btn btn-sm btn-secondary" onClick={() => setBrowseOpen((open) => !open)}>
+              {browseOpen ? "Hide" : "Browse…"}
+            </button>
+          </div>
         </label>
+        {browseOpen && (
+          <DirectoryBrowser
+            initial={cwd}
+            onPick={(path) => {
+              setCwd(path);
+              setBrowseOpen(false);
+            }}
+          />
+        )}
+        <label>
+          Engine
+          <select value={engine} onChange={(event) => setEngine(event.target.value)}>
+            {ENGINES.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+          <span className="field-hint">{ENGINES.find((item) => item.id === engine)?.hint || ""}</span>
+        </label>
+        {engine === "opencode" && (
+          <label>
+            Model
+            <select
+              value={modelText}
+              onChange={(event) => setModelText(event.target.value)}
+              disabled={ocLoading || ocModels.length === 0}
+            >
+              <option value="">{ocLoading ? "Loading models…" : "OpenCode default model"}</option>
+              {ocModels.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+            {ocError && <span className="field-hint">{ocError}</span>}
+          </label>
+        )}
+        {engine === "codex" && (
+          <label>
+            Model
+            <input
+              value={modelText}
+              onChange={(event) => setModelText(event.target.value)}
+              placeholder="e.g. gpt-5.6 (empty uses the Codex default)"
+            />
+          </label>
+        )}
+        {engine === "kiro" && (
         <details open>
           <summary>Kiro options</summary>
           <div className="advanced-fields">
@@ -110,17 +266,19 @@ export function CreateBotDialog({ open, onClose, onDone }: DialogProps) {
               </select>
               {agentHint && <span className="field-hint">{agentHint}</span>}
             </label>
-            <label>
-              Model
-              <select value={model} onChange={(event) => setModel(event.target.value)}>
-                {KIRO_MODELS.map((item) => (
-                  <option key={item.id || "default"} value={item.id}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {model === "__custom" && (
+            {engine === "kiro" && (
+              <label>
+                Model
+                <select value={model} onChange={(event) => setModel(event.target.value)}>
+                  {KIRO_MODELS.map((item) => (
+                    <option key={item.id || "default"} value={item.id}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {engine === "kiro" && model === "__custom" && (
               <label>
                 Custom model ID
                 <input
@@ -143,6 +301,7 @@ export function CreateBotDialog({ open, onClose, onDone }: DialogProps) {
             </label>
           </div>
         </details>
+        )}
         <p className="form-error" role="alert">
           {error}
         </p>
@@ -162,6 +321,7 @@ export function CreateBotDialog({ open, onClose, onDone }: DialogProps) {
 export function RoutineDialog({ open, onClose, bot, onDone }: DialogProps) {
   const [error, setError] = useState("");
   const [kind, setKind] = useState("interval");
+  const [intervalMinutes, setIntervalMinutes] = useState(60);
   return (
     <Modal eyebrow="Work" title="Schedule a routine" open={open} onClose={onClose}>
       <form
@@ -199,20 +359,45 @@ export function RoutineDialog({ open, onClose, bot, onDone }: DialogProps) {
           Prompt
           <textarea name="prompt" required rows={4} placeholder="Review open work and summarize blockers." />
         </label>
-        <label>
-          Schedule
-          <select value={kind} onChange={(event) => setKind(event.target.value)}>
-            <option value="interval">Repeat</option>
-            <option value="once">Run once</option>
-          </select>
-        </label>
+        <FieldGroup label="Schedule">
+          <SegmentedControl
+            value={kind}
+            options={[
+              { value: "interval", label: "Repeat", hint: "Run again on a fixed cadence" },
+              { value: "once", label: "Run once", hint: "Fire at a single moment" },
+            ]}
+            onChange={setKind}
+            label="Schedule kind"
+          />
+        </FieldGroup>
         {kind === "interval" ? (
-          <label>
-            Every minutes <input name="interval_minutes" type="number" min={1} defaultValue={60} />
-          </label>
+          <FieldGroup label="Cadence" hint="Custom values are allowed — the bot never runs more often than once a minute.">
+            <input type="hidden" name="interval_minutes" value={intervalMinutes} readOnly />
+            <SegmentedControl
+              value={String(intervalMinutes)}
+              options={[
+                { value: "5", label: "5 min" },
+                { value: "15", label: "15 min" },
+                { value: "60", label: "Hourly" },
+                { value: "360", label: "6 h" },
+                { value: "1440", label: "Daily" },
+              ]}
+              onChange={(value) => setIntervalMinutes(Number(value))}
+              label="Cadence presets"
+              size="sm"
+            />
+            <NumberStepper
+              label="Every minutes"
+              value={intervalMinutes}
+              min={1}
+              max={10_080}
+              onChange={setIntervalMinutes}
+              hint={`Runs ≈ ${Math.max(1, Math.round((24 * 60) / Math.max(1, intervalMinutes)))} times a day`}
+            />
+          </FieldGroup>
         ) : (
           <label>
-            Run at <input name="run_at" type="datetime-local" />
+            Run at <input name="run_at" type="datetime-local" required />
           </label>
         )}
         <p className="form-error" role="alert">
@@ -234,6 +419,8 @@ export function RoutineDialog({ open, onClose, bot, onDone }: DialogProps) {
 export function PluginDialog({ open, onClose, bot, onDone }: DialogProps) {
   const [error, setError] = useState("");
   const [transport, setTransport] = useState("stdio");
+  const [args, setArgs] = useState<string[]>([]);
+  const [envRows, setEnvRows] = useState<KeyValueRow[]>([]);
   return (
     <Modal eyebrow="Safety" title="Add an MCP server" open={open} onClose={onClose}>
       <form
@@ -255,13 +442,18 @@ export function PluginDialog({ open, onClose, bot, onDone }: DialogProps) {
           };
           if (transport === "stdio") {
             payload.command = values.command;
-            payload.args = csv(values.args);
-            try {
-              payload.env = parseEnvReferences(values.env);
-            } catch (exc) {
-              setError((exc as Error).message);
-              return;
+            payload.args = args;
+            const env: Record<string, string> = {};
+            for (const row of envRows) {
+              const key = row.key.trim();
+              if (!key) continue;
+              if (!row.value.trim()) {
+                setError(`${key} needs a value such as env:MY_TOKEN.`);
+                return;
+              }
+              env[key] = row.value.trim();
             }
+            payload.env = env;
           } else {
             payload.url = values.url;
           }
@@ -270,6 +462,8 @@ export function PluginDialog({ open, onClose, bot, onDone }: DialogProps) {
             await api.bindPlugin(bot.name, payload.id as string);
             form.reset();
             setTransport("stdio");
+            setArgs([]);
+            setEnvRows([]);
             onClose();
             onDone();
           } catch (exc) {
@@ -287,29 +481,44 @@ export function PluginDialog({ open, onClose, bot, onDone }: DialogProps) {
         <label>
           Display name <input name="name" required maxLength={100} placeholder="GitHub" />
         </label>
-        <label>
-          Transport
-          <select value={transport} onChange={(event) => setTransport(event.target.value)}>
-            <option value="stdio">Local command</option>
-            <option value="http">Secure URL</option>
-          </select>
-        </label>
+        <FieldGroup label="Transport">
+          <TilePicker
+            value={transport}
+            options={[
+              { value: "stdio", label: "Local command", hint: "Runs an MCP server binary on this machine" },
+              { value: "http", label: "Secure URL", hint: "Streams to a hosted MCP endpoint over HTTPS" },
+            ]}
+            onChange={setTransport}
+            label="Transport"
+            columns={2}
+          />
+        </FieldGroup>
         {transport === "stdio" ? (
           <>
             <label>
               Command <input name="command" placeholder="npx" />
             </label>
-            <label>
-              Arguments <input name="args" placeholder="-y, @example/mcp" />
-            </label>
-            <label>
-              Environment references
-              <textarea name="env" rows={3} placeholder="API_TOKEN=env:MY_API_TOKEN" />
-            </label>
+            <TagInput
+              label="Arguments"
+              value={args}
+              onChange={setArgs}
+              mono
+              placeholder="-y"
+              hint="Enter after each argument. Values are passed straight through, never through a shell."
+            />
+            <KeyValueRows
+              label="Environment"
+              value={envRows}
+              onChange={setEnvRows}
+              keyPlaceholder="API_TOKEN"
+              valuePlaceholder="env:MY_API_TOKEN"
+              addLabel="Add variable"
+              hint="Only environment references are accepted — secrets never land in the database."
+            />
           </>
         ) : (
           <label>
-            HTTPS URL <input name="url" placeholder="https://mcp.example.com/mcp" />
+            HTTPS URL <input name="url" required placeholder="https://mcp.example.com/mcp" />
           </label>
         )}
         <p className="form-error" role="alert">
@@ -330,6 +539,9 @@ export function PluginDialog({ open, onClose, bot, onDone }: DialogProps) {
 
 export function ChannelDialog({ open, onClose, bot, onDone }: DialogProps) {
   const [error, setError] = useState("");
+  const [channelKind, setChannelKind] = useState("telegram");
+  const [allowedSenders, setAllowedSenders] = useState<string[]>([]);
+  const [allowedSources, setAllowedSources] = useState<string[]>([]);
   return (
     <Modal eyebrow="Work" title="Connect another place" open={open} onClose={onClose}>
       <form
@@ -344,16 +556,19 @@ export function ChannelDialog({ open, onClose, bot, onDone }: DialogProps) {
             await api.createChannel({
               id: values.id,
               name: values.name,
-              kind: values.kind,
+              kind: channelKind,
               bot_name: bot.name,
               signing_secret_env: values.signing_secret_env,
               verify_token_env: values.verify_token_env,
               outbound_token_env: values.outbound_token_env,
               trigger_prefix: values.trigger_prefix,
-              allowed_sources: csv(values.allowed_sources),
-              allowed_senders: csv(values.allowed_senders),
+              allowed_sources: allowedSources,
+              allowed_senders: allowedSenders,
             });
             form.reset();
+            setChannelKind("telegram");
+            setAllowedSenders([]);
+            setAllowedSources([]);
             onClose();
             onDone();
           } catch (exc) {
@@ -371,17 +586,23 @@ export function ChannelDialog({ open, onClose, bot, onDone }: DialogProps) {
         <label>
           Connection ID <input name="id" required maxLength={80} placeholder="iphone-telegram" />
         </label>
-        <label>
-          Source
-          <select name="kind" defaultValue="telegram">
-            <option value="telegram">Telegram</option>
-            <option value="slack">Slack</option>
-            <option value="github">GitHub</option>
-            <option value="whatsapp">WhatsApp</option>
-            <option value="email">Email gateway</option>
-            <option value="webhook">Signed webhook</option>
-          </select>
-        </label>
+        <input type="hidden" name="kind" value={channelKind} readOnly />
+        <FieldGroup label="Source">
+          <TilePicker
+            value={channelKind}
+            options={[
+              { value: "telegram", label: "Telegram", hint: "Polls from this machine" },
+              { value: "slack", label: "Slack", hint: "Signed events" },
+              { value: "github", label: "GitHub", hint: "Issues and PRs" },
+              { value: "whatsapp", label: "WhatsApp", hint: "Cloud API" },
+              { value: "email", label: "Email", hint: "Gateway webhook" },
+              { value: "webhook", label: "Webhook", hint: "Anything signed" },
+            ]}
+            onChange={setChannelKind}
+            label="Channel source"
+            columns={3}
+          />
+        </FieldGroup>
         <label>
           Signing-secret environment variable{" "}
           <input name="signing_secret_env" required placeholder="KIRO_TELEGRAM_BOT_TOKEN" />
@@ -397,16 +618,23 @@ export function ChannelDialog({ open, onClose, bot, onDone }: DialogProps) {
         <label>
           Invocation phrase <input name="trigger_prefix" placeholder="Empty for Telegram DMs · @kiro for groups" />
         </label>
-        <label>
-          Allowed senders <input name="allowed_senders" placeholder="Your Telegram user id from @userinfobot" />
-        </label>
+        <TagInput
+          label="Allowed senders"
+          value={allowedSenders}
+          onChange={setAllowedSenders}
+          placeholder="8961333191"
+          hint="Enter after each id, handle or email. Leave empty to accept any authenticated sender."
+        />
         <details>
           <summary>Limit sources further</summary>
           <div className="advanced-fields">
-            <label>
-              Allowed sources{" "}
-              <input name="allowed_sources" placeholder="Channel IDs, repositories, or recipients" />
-            </label>
+            <TagInput
+              label="Allowed sources"
+              value={allowedSources}
+              onChange={setAllowedSources}
+              placeholder="C0123ABCD · owner/repo"
+              hint="Channel ids, repositories or recipients this bot will answer."
+            />
           </div>
         </details>
         <p className="form-error" role="alert">
@@ -426,13 +654,33 @@ export function ChannelDialog({ open, onClose, bot, onDone }: DialogProps) {
 }
 
 
-export function CodingDialog({ open, onClose, bot, onDone }: DialogProps) {
+interface CheckRow {
+  name: string;
+  argv: string[];
+  timeout: number;
+}
+
+export function CodingDialog({ open, onClose, bot, bots = [], onDone }: DialogProps) {
   const [error, setError] = useState("");
   const [repoPath, setRepoPath] = useState("");
+  const [reviewerBot, setReviewerBot] = useState("");
+  const [task, setTask] = useState("");
+  const [checks, setChecks] = useState<CheckRow[]>([{ name: "tests", argv: ["pytest", "-q"], timeout: 600 }]);
+  const [maxRepairs, setMaxRepairs] = useState(1);
 
   useEffect(() => {
     if (open && bot?.cwd) setRepoPath(bot.cwd);
   }, [open, bot]);
+
+  useEffect(() => {
+    if (!open) return;
+    const options = bots.filter((item) => item.name !== bot?.name);
+    setReviewerBot((current) => current || options[0]?.name || "");
+  }, [open, bots, bot?.name]);
+
+  const reviewers = bots.filter((item) => item.name !== bot?.name);
+  const updateCheck = (index: number, patch: Partial<CheckRow>) =>
+    setChecks((current) => current.map((row, position) => (position === index ? { ...row, ...patch } : row)));
 
   return (
     <Modal eyebrow="Work" title="Build a verified patch" open={open} onClose={onClose}>
@@ -440,34 +688,29 @@ export function CodingDialog({ open, onClose, bot, onDone }: DialogProps) {
         className="modal-form"
         onSubmit={async (event) => {
           event.preventDefault();
-          const form = event.currentTarget;
           if (!bot) return;
           setError("");
-          const values = formValues(form);
           try {
-            const checks = String(values.checks || "")
-              .split("\n")
-              .map((line) => line.trim())
-              .filter(Boolean)
-              .map((line, index) => {
-                const split = line.indexOf(":");
-                if (split < 1) throw new Error(`Check line ${index + 1} must use name: executable, argument.`);
-                const argv = csv(line.slice(split + 1));
-                if (!argv.length) throw new Error(`Check line ${index + 1} has no executable.`);
-                return { name: line.slice(0, split).trim(), argv };
-              });
-            if (!checks.length) throw new Error("Add at least one deterministic check.");
+            if (!reviewerBot) throw new Error("Choose a reviewer bot — it must be a different bot.");
+            const payload = checks.map((row, index) => {
+              if (!row.name.trim()) throw new Error(`Check ${index + 1} needs a name.`);
+              if (row.argv.length === 0) throw new Error(`Check ${index + 1} needs an executable.`);
+              return { name: row.name.trim(), argv: row.argv, timeout_seconds: row.timeout };
+            });
+            if (payload.length === 0) throw new Error("Add at least one deterministic check.");
             await api.createCodingExecution({
               idempotency_key: `browser-${crypto.randomUUID()}`,
-              repo_path: values.repo_path,
-              task: values.task,
+              repo_path: repoPath,
+              task,
               builder_bot: bot.name,
-              reviewer_bot: values.reviewer_bot,
-              checks,
-              max_repairs: Number(values.max_repairs || 0),
+              reviewer_bot: reviewerBot,
+              checks: payload,
+              max_repairs: maxRepairs,
             });
-            form.reset();
+            setTask("");
             setRepoPath("");
+            setChecks([{ name: "tests", argv: ["pytest", "-q"], timeout: 600 }]);
+            setMaxRepairs(1);
             onClose();
             onDone();
           } catch (exc) {
@@ -477,25 +720,98 @@ export function CodingDialog({ open, onClose, bot, onDone }: DialogProps) {
       >
         <p className="dialog-copy">The selected bot builds. Choose a different bot for independent review. Nothing is pushed or merged.</p>
         <label>
-          Repository <input name="repo_path" required value={repoPath} onChange={(event) => setRepoPath(event.target.value)} placeholder="/Users/you/project" />
+          Repository
+          <input
+            name="repo_path"
+            required
+            value={repoPath}
+            onChange={(event) => setRepoPath(event.target.value)}
+            placeholder="/Users/you/project"
+          />
+          <span className="field-hint">A worktree is created from here; your working copy is left alone.</span>
         </label>
-        <label>
-          Reviewer bot <input name="reviewer_bot" required placeholder="reviewer" />
-        </label>
+        <FieldGroup label="Reviewer bot" hint="Independent review must come from a different bot.">
+          {reviewers.length === 0 ? (
+            <p className="activity-empty">Create a second bot to review the work.</p>
+          ) : (
+            <TilePicker
+              value={reviewerBot}
+              options={reviewers.map((item) => ({
+                value: item.name,
+                label: item.name,
+                hint: item.engine || "kiro",
+              }))}
+              onChange={setReviewerBot}
+              label="Reviewer bot"
+              columns={2}
+            />
+          )}
+        </FieldGroup>
         <label>
           Task
-          <textarea name="task" required rows={5} placeholder="Fix the issue, add tests, and explain the risk." />
+          <textarea
+            name="task"
+            required
+            rows={5}
+            value={task}
+            onChange={(event) => setTask(event.target.value)}
+            placeholder="Fix the issue, add tests, and explain the risk."
+          />
         </label>
-        <label>
-          Checks
-          <textarea name="checks" required rows={3} placeholder={"tests: pytest, -q\nlint: ruff, check, ."} />
-        </label>
-        <p className="dialog-copy">
-          One check per line: <strong>name: executable, argument</strong>. Commands run directly without a shell.
-        </p>
-        <label>
-          Maximum repairs <input name="max_repairs" type="number" min={0} max={3} defaultValue={1} />
-        </label>
+        <FieldGroup label="Checks" hint="Commands run directly, without a shell. Enter after each argument.">
+          {checks.map((row, index) => (
+            <div className="check-row" key={index}>
+              <div className="check-row-head">
+                <input
+                  className="check-name"
+                  value={row.name}
+                  placeholder="tests"
+                  aria-label={`Check ${index + 1} name`}
+                  onChange={(event) => updateCheck(index, { name: event.target.value })}
+                />
+                <NumberStepper
+                  label="Timeout s"
+                  value={row.timeout}
+                  min={5}
+                  max={3600}
+                  step={30}
+                  onChange={(value) => updateCheck(index, { timeout: value })}
+                  hint="Seconds before the check is killed"
+                />
+                <button
+                  type="button"
+                  className="kv-remove"
+                  aria-label={`Remove check ${index + 1}`}
+                  onClick={() => setChecks((current) => current.filter((_, position) => position !== index))}
+                >
+                  ×
+                </button>
+              </div>
+              <TagInput
+                label="Command"
+                value={row.argv}
+                onChange={(argv) => updateCheck(index, { argv })}
+                mono
+                placeholder={row.name === "tests" ? "pytest" : "npm"}
+              />
+            </div>
+          ))}
+          <button
+            type="button"
+            className="kv-add"
+            onClick={() => setChecks((current) => [...current, { name: "", argv: [], timeout: 600 }])}
+          >
+            Add check
+          </button>
+        </FieldGroup>
+        <NumberStepper
+          label="Maximum repairs"
+          value={maxRepairs}
+          min={0}
+          max={3}
+          onChange={setMaxRepairs}
+          hint="How many times the builder may fix a failing check"
+        />
         <p className="form-error" role="alert">
           {error}
         </p>
@@ -505,6 +821,232 @@ export function CodingDialog({ open, onClose, bot, onDone }: DialogProps) {
           </button>
           <button type="submit" className="btn btn-sm btn-primary">
             Start coding
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+export function HandoffDialog({ open, onClose, bot }: DialogProps) {
+  const [target, setTarget] = useState("opencode");
+  const [prompt, setPrompt] = useState("");
+  const [warnings, setWarnings] = useState<string[]>([]);
+  const [tokens, setTokens] = useState(0);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (open && bot) {
+      const fallback = ["kiro", "opencode", "codex"].find((engine) => engine !== (bot.engine || "kiro")) || "opencode";
+      setTarget(fallback);
+      setPrompt("");
+      setWarnings([]);
+      setTokens(0);
+      setError("");
+    }
+  }, [open, bot]);
+
+  const compile = async () => {
+    if (!bot) return;
+    setLoading(true);
+    setError("");
+    try {
+      const bundle = await api.handoff(bot.name, target);
+      setPrompt(String(bundle.prompt || ""));
+      setWarnings(Array.isArray(bundle.warnings) ? bundle.warnings.map(String) : []);
+      setTokens(Number(bundle.total_estimated_tokens || 0));
+    } catch (exc) {
+      setError((exc as Error).message || "Could not compile handoff");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Modal eyebrow="Portable context" title="Hand off this thread" open={open} onClose={onClose} wide>
+      <p className="dialog-copy">
+        Compile the bot&apos;s durable turns and current workspace into a bounded bundle for another engine.
+        The next worker must still verify assumptions against the repository.
+      </p>
+      <FieldGroup label="Next engine">
+        <TilePicker
+          value={target}
+          options={[
+            { value: "kiro", label: "Kiro", hint: "Native ACP session" },
+            { value: "opencode", label: "OpenCode", hint: "Separate agent runtime" },
+            { value: "codex", label: "Codex", hint: "Needs codex-acp installed" },
+          ]}
+          onChange={setTarget}
+          label="Next engine"
+        />
+      </FieldGroup>
+      {warnings.length > 0 && (
+        <p className="dialog-copy">{warnings.join(" ")}</p>
+      )}
+      {prompt && (
+        <pre className="handoff-preview">{prompt}</pre>
+      )}
+      <p className="form-error" role="alert">
+        {error}
+      </p>
+      <div className="dialog-actions">
+        <span className="field-hint">{tokens > 0 ? `~${tokens} tokens` : ""}</span>
+        <button type="button" className="btn btn-sm btn-secondary" onClick={onClose}>
+          Close
+        </button>
+        <button type="button" className="btn btn-sm btn-primary" disabled={loading || !bot} onClick={() => void compile()}>
+          {loading ? "Compiling…" : "Compile handoff"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+interface CreateGroupDialogProps extends DialogProps {
+  onCreated?: (groupId: string) => void;
+}
+
+export function CreateGroupDialog({ open, onClose, bots = [], onDone, onCreated }: CreateGroupDialogProps) {
+  const [name, setName] = useState("");
+  const [aim, setAim] = useState("");
+  const [members, setMembers] = useState<string[]>([]);
+  const [rounds, setRounds] = useState(2);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setError("");
+    setMembers((current) =>
+      current.length > 0 ? current : bots.slice(0, Math.min(3, bots.length)).map((bot) => bot.name),
+    );
+  }, [open, bots]);
+
+  const toggle = (botName: string) => {
+    setMembers((current) =>
+      current.includes(botName)
+        ? current.filter((item) => item !== botName)
+        : [...current, botName],
+    );
+  };
+
+  return (
+    <Modal eyebrow="New group" title="Start a group chat" open={open} onClose={onClose}>
+      <form
+        className="modal-form"
+        onSubmit={async (event: FormEvent<HTMLFormElement>) => {
+          event.preventDefault();
+          setError("");
+          if (members.length === 0) {
+            setError("Pick at least one bot for the group.");
+            return;
+          }
+          setBusy(true);
+          try {
+            const created = await api.createGroup({
+              name: name.trim(),
+              aim: aim.trim(),
+              members,
+              max_rounds: rounds,
+              start: true,
+            });
+            onClose();
+            onDone();
+            onCreated?.(created.group.id);
+            setName("");
+            setAim("");
+            setRounds(2);
+            setMembers([]);
+          } catch (exc) {
+            setError((exc as Error).message || "Could not create this group");
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        <p className="dialog-copy">
+          Bots in a group take turns working one shared aim and read each other's replies before they
+          speak. You can jump into the thread at any time.
+        </p>
+        <label>
+          Group name
+          <input
+            name="name"
+            autoComplete="off"
+            required
+            maxLength={80}
+            placeholder="Launch room"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+          />
+        </label>
+        <label>
+          Shared aim
+          <textarea
+            name="aim"
+            rows={3}
+            required
+            maxLength={400}
+            placeholder="Ship the release notes with one verified changelog entry per merged pull request."
+            value={aim}
+            onChange={(event) => setAim(event.target.value)}
+          />
+          <span className="field-hint">Every bot is prompted with this aim on each turn.</span>
+        </label>
+        <div className="group-picker">
+          <span className="field-label">Members</span>
+          {bots.length === 0 && <p className="activity-empty">Create a bot first, then group them.</p>}
+          <div className="group-picker__grid">
+            {bots.map((bot) => {
+              const picked = members.includes(bot.name);
+              return (
+                <button
+                  key={bot.name}
+                  type="button"
+                  className={`group-pick${picked ? " is-picked" : ""}`}
+                  aria-pressed={picked}
+                  onClick={() => toggle(bot.name)}
+                >
+                  <BotAvatar name={bot.name} size={30} />
+                  <span className="group-pick__copy">
+                    <strong>{bot.name}</strong>
+                    <small>{bot.engine || "kiro"}</small>
+                  </span>
+                  <span className="group-pick__mark" aria-hidden>
+                    {picked ? "✓" : "+"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <label>
+          Rounds
+          <input
+            name="max_rounds"
+            type="number"
+            min={1}
+            max={10}
+            value={rounds}
+            onChange={(event) => setRounds(Math.min(10, Math.max(1, Number(event.target.value) || 1)))}
+          />
+          <span className="field-hint">
+            One round lets every member speak once. The group also stops early when a bot replies with
+            [GROUP DONE].
+          </span>
+        </label>
+        {error && (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        )}
+        <div className="dialog-actions">
+          <button type="button" className="btn btn-sm btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="btn btn-sm btn-primary" disabled={busy || members.length === 0}>
+            {busy ? "Starting…" : "Create and start"}
           </button>
         </div>
       </form>

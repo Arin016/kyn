@@ -1,11 +1,17 @@
 import { useMemo, useState } from "react";
-import type { Channel, ChannelEvent, Surface } from "../types";
+import type { Channel, ChannelEvent, Group, Surface } from "../types";
+import { BotAvatar } from "./BotAvatar";
 import { KiroGlyph } from "./KiroGlyph";
+import { ThemeToggle } from "./ThemeToggle";
 
 interface Props {
   bots: { name: string; cwd?: string; model?: string; agent?: string; engine?: string }[];
   selectedBot: string | null;
   onSelectBot: (name: string) => void;
+  groups: Group[];
+  activeGroup: string | null;
+  onSelectGroup: (groupId: string) => void;
+  onNewGroup: () => void;
   channels: Channel[];
   channelEvents: ChannelEvent[];
   surface: Surface;
@@ -21,28 +27,14 @@ interface Props {
   onWorkspaceChange: (workspace: "conversation" | "workflows") => void;
 }
 
-function latestThread(events: ChannelEvent[], channelId: string): { threadKey: string; preview: string; live: boolean } {
-  const mine = events.filter((event) => event.binding_id === channelId);
-  const newest = [...mine]
-    .sort((a, b) => String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")))
-    .at(-1);
-  if (!newest) return { threadKey: "", preview: "Waiting for the first message", live: false };
-  return {
-    threadKey: String(newest.thread_key || ""),
-    preview: String(newest.text || "Remote request").replaceAll("\n", " "),
-    live: ["queued", "running"].includes(newest.status),
-  };
-}
-
 export function Sidebar({
   bots,
   selectedBot,
   onSelectBot,
-  channels,
-  channelEvents,
-  surface,
-  onSelectSurface,
-  unread,
+  groups,
+  activeGroup,
+  onSelectGroup,
+  onNewGroup,
   localLive,
   connected,
   connectionLabel,
@@ -57,10 +49,6 @@ export function Sidebar({
   const filteredBots = useMemo(
     () => bots.filter((bot) => bot.name.toLowerCase().includes(query.toLowerCase())),
     [bots, query],
-  );
-  const filteredChannels = useMemo(
-    () => channels.filter((channel) => channel.name.toLowerCase().includes(query.toLowerCase())),
-    [channels, query],
   );
 
   return (
@@ -102,6 +90,55 @@ export function Sidebar({
           <li><button type="button" className={`side-item${workspace === "workflows" ? " selected" : ""}`} onClick={() => onWorkspaceChange("workflows")}><span className="side-item-mark live" aria-hidden /><span className="side-item-copy"><span className="side-item-name">Workflows</span><span className="side-item-meta">Build a team graph</span></span></button></li>
         </ul>
 
+        <div className="sidebar-heading">
+          Groups
+          <button
+            type="button"
+            className="sidebar-heading-add"
+            onClick={onNewGroup}
+            aria-label="New group chat"
+            title="Group bots around one aim"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden>
+              <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+        <ul className="sidebar-list" aria-label="Group chats">
+          {groups.length === 0 && (
+            <li>
+              <p className="activity-empty">Group bots around one shared aim.</p>
+            </li>
+          )}
+          {groups.map((group) => (
+            <li key={group.id}>
+              <button
+                type="button"
+                className={`side-item side-group${activeGroup === group.id ? " selected" : ""}`}
+                aria-current={activeGroup === group.id ? "page" : undefined}
+                onClick={() => onSelectGroup(group.id)}
+              >
+                <span className="side-stack" aria-hidden>
+                  {group.members.slice(0, 3).map((member, index) => (
+                    <span key={member} className="side-stack-item" style={{ zIndex: 3 - index }}>
+                      <BotAvatar name={member} size={30} />
+                    </span>
+                  ))}
+                </span>
+                <span className="side-item-copy">
+                  <span className="side-item-name">{group.name}</span>
+                  <span className="side-item-meta">
+                    <span className="side-item-meta-text">
+                      {group.members.length} bot{group.members.length === 1 ? "" : "s"}
+                      {group.running ? " · working" : group.status === "done" ? " · aim met" : ""}
+                    </span>
+                  </span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+
         <div className="sidebar-heading">Bots</div>
         <ul className="sidebar-list" aria-label="Available bots">
           {filteredBots.length === 0 && <li><p className="activity-empty">No bots yet.</p></li>}
@@ -109,67 +146,37 @@ export function Sidebar({
             <li key={bot.name}>
               <button
                 type="button"
-                className={`side-item${selectedBot === bot.name ? " selected" : ""}`}
+                className={`side-item side-bot${selectedBot === bot.name ? " selected" : ""}`}
                 aria-current={selectedBot === bot.name ? "page" : undefined}
                 onClick={() => onSelectBot(bot.name)}
               >
-                <span
-                  className={`side-item-mark${selectedBot === bot.name && localLive ? " live" : ""}`}
-                  aria-hidden
-                />
+                <span className="side-avatar">
+                  <BotAvatar name={bot.name} size={38} />
+                  {selectedBot === bot.name && localLive && (
+                    <span className="side-avatar-live" aria-label="Working" />
+                  )}
+                </span>
                 <span className="side-item-copy">
                   <span className="side-item-name">{bot.name}</span>
-                  <span className="side-item-meta">{bot.engine ? `${bot.engine} · ` : ""}{bot.model || bot.agent || bot.cwd || "Kiro agent"}</span>
+                  <span className="side-item-meta">
+                    {bot.engine && (
+                      <span className="engine-badge" data-engine={bot.engine.toLowerCase()}>
+                        {bot.engine}
+                      </span>
+                    )}
+                    <span className="side-item-meta-text">
+                      {bot.model || bot.agent || bot.cwd || "Kiro agent"}
+                    </span>
+                  </span>
                 </span>
               </button>
             </li>
           ))}
         </ul>
 
-        <div className="sidebar-heading">Channels</div>
-        <ul className="sidebar-list" aria-label="Conversation surfaces">
-          <li>
-            <button
-              type="button"
-              className={`side-item${surface.kind === "local" ? " selected" : ""}`}
-              onClick={() => onSelectSurface({ kind: "local" })}
-            >
-              <span className={`side-item-mark${surface.kind === "local" && localLive ? " live" : ""}`} aria-hidden />
-              <span className="side-item-copy">
-                <span className="side-item-name">This laptop</span>
-                <span className="side-item-meta">Local conversation</span>
-              </span>
-            </button>
-          </li>
-          {filteredChannels.map((channel) => {
-            const thread = latestThread(channelEvents, channel.id);
-            const count = unread[`channel:${channel.id}:${thread.threadKey}`] || 0;
-            const selected = surface.kind === "channel" && surface.id === channel.id;
-            return (
-              <li key={channel.id}>
-                <button
-                  type="button"
-                  className={`side-item${selected ? " selected" : ""}`}
-                  onClick={() =>
-                    onSelectSurface({ kind: "channel", id: channel.id, threadKey: thread.threadKey })
-                  }
-                >
-                  <span className={`side-item-mark${thread.live ? " live" : ""}`} aria-hidden />
-                  <span className="side-item-copy">
-                    <span className="side-item-name">
-                      {channel.kind === "telegram" ? "Telegram" : channel.name}
-                    </span>
-                    <span className="side-item-meta">{thread.preview.slice(0, 44)}</span>
-                  </span>
-                  {count > 0 && <span className="side-unread">{count}</span>}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-
         <div className="sidebar-footer">
           <span>{connectionLabel ?? (connected ? "Control plane online" : "Offline")}</span>
+          <ThemeToggle />
         </div>
       </div>
     </aside>
