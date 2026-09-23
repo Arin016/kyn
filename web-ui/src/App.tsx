@@ -82,6 +82,13 @@ const SUGGESTIONS = [
   "Write tests for the riskiest module",
 ];
 
+const CHIEF_SUGGESTIONS = [
+  "Show me the fleet status",
+  "Create a reviewer bot for this repo",
+  "Switch builder to Claude Sonnet 4.5",
+  "Schedule a nightly repo check for builder",
+];
+
 function eventId(payload: unknown): number {
   const record = payload as Record<string, unknown>;
   return Number(record?.id || record?.sequence || record?.offset || 0);
@@ -1152,7 +1159,9 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
                   : "Create a bot to begin"
             }
             botName={selectedBot?.name}
-            suggestions={SUGGESTIONS}
+            suggestions={
+              selectedBot?.name.trim().toLowerCase() === "chief" ? CHIEF_SUGGESTIONS : SUGGESTIONS
+            }
             onSuggestion={(text) => void submitTurn(text)}
             onApproval={(id, decision) => void decidePermission(id, decision)}
           />

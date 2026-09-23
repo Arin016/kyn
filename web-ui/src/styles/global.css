@@ -604,6 +604,25 @@ a:hover {
   flex-direction: column;
 }
 
+.chief-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 2px 7px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--hairline-strong);
+  background: var(--contrast-bg);
+  color: var(--contrast-fg);
+  font-family: var(--font-mono);
+  font-size: 0.52rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transform: translateY(-1px);
+}
+
 .side-item-name {
   white-space: nowrap;
   overflow: hidden;

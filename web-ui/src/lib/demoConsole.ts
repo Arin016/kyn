@@ -16,6 +16,7 @@ export const DEMO_TELEGRAM_OUT =
   "Nothing blocking. Checklist is green; I'll watch the deploy thread and ping you if approvals queue up.";
 
 export const DEMO_BOTS: Bot[] = [
+  { name: "chief", cwd: "~/.kyn", model: "Kiro" },
   { name: "builder", cwd: "~/personal", model: "Kiro" },
   { name: "reviewer", cwd: "~/personal", model: "Kiro" },
   { name: "triage", cwd: "~/personal/kyn", agent: "triage" },

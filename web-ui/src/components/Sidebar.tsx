@@ -4,6 +4,11 @@ import { BotAvatar } from "./BotAvatar";
 import { KiroGlyph } from "./KiroGlyph";
 import { ThemeToggle } from "./ThemeToggle";
 
+/** The chief-of-staff bot carries fleet tools; the badge marks it in the roster. */
+export function isChiefBot(name: string): boolean {
+  return name.trim().toLowerCase() === "chief";
+}
+
 interface Props {
   bots: { name: string; cwd?: string; model?: string; agent?: string; engine?: string }[];
   selectedBot: string | null;
@@ -157,7 +162,10 @@ export function Sidebar({
                   )}
                 </span>
                 <span className="side-item-copy">
-                  <span className="side-item-name">{bot.name}</span>
+                  <span className="side-item-name">
+                    {bot.name}
+                    {isChiefBot(bot.name) && <span className="chief-badge">Chief of staff</span>}
+                  </span>
                   <span className="side-item-meta">
                     {bot.engine && (
                       <span className="engine-badge" data-engine={bot.engine.toLowerCase()}>
