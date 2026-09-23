@@ -13,7 +13,7 @@ from .store import Bot, Store
 
 
 def parser() -> argparse.ArgumentParser:
-    root = argparse.ArgumentParser(prog="kyn", description="KYN — persistent local agents on Kiro")
+    root = argparse.ArgumentParser(prog="kyn", description="KYN — persistent local agents on ACP engines")
     commands = root.add_subparsers(dest="command", required=True)
 
     bot = commands.add_parser("bot", help="manage named bots")
@@ -24,6 +24,7 @@ def parser() -> argparse.ArgumentParser:
     create.add_argument("--agent", default="")
     create.add_argument("--model", default="")
     create.add_argument("--effort", default="")
+    create.add_argument("--engine", default="kiro", choices=["kiro", "opencode", "codex"])
     bot_commands.add_parser("list", help="list bots")
 
     ask = commands.add_parser("ask", help="run one turn")
@@ -78,12 +79,13 @@ def _bot_command(args: argparse.Namespace) -> None:
                 agent=args.agent,
                 model=args.model,
                 effort=args.effort,
+                engine=args.engine,
             )
         )
         print(f"Saved bot {args.name!r} for {cwd}")
         return
     for bot in store.list_bots():
-        details = [bot.cwd]
+        details = [bot.cwd, f"engine={bot.engine}"]
         if bot.agent:
             details.append(f"agent={bot.agent}")
         if bot.model:

@@ -8,6 +8,7 @@ from .protocol import (
     REQUEST_PERMISSION,
     SESSION_CANCEL,
     SESSION_PROMPT,
+    SESSION_SET_CONFIG_OPTION,
     SESSION_SET_MODE,
     SESSION_SET_MODEL,
     SESSION_UPDATE,
@@ -27,11 +28,13 @@ class AcpSession:
         session_id: str,
         queue: asyncio.Queue[dict[str, Any] | None],
         config: dict[str, Any],
+        identity_namespace: str = "kiro",
     ) -> None:
         self.runtime = runtime
         self.session_id = session_id
         self.queue = queue
         self.config = config
+        self.identity_namespace = identity_namespace
         self._turn_lock = asyncio.Lock()
         self._permission_options: dict[str | int, list[dict[str, Any]]] = {}
         self._tool_identities: dict[str, tuple[str, str]] = {}
@@ -49,6 +52,13 @@ class AcpSession:
     async def set_model(self, model: str) -> None:
         await self.runtime.request(
             SESSION_SET_MODEL, {"sessionId": self.session_id, "modelId": model}, 30
+        )
+
+    async def set_config_option(self, config_id: str, value: str) -> None:
+        await self.runtime.request(
+            SESSION_SET_CONFIG_OPTION,
+            {"sessionId": self.session_id, "configId": config_id, "value": value},
+            30,
         )
 
     async def prompt(self, message: str, timeout: float = 7200) -> AsyncIterator[Event]:
@@ -83,7 +93,7 @@ class AcpSession:
                         return
                     method = frame.get("method")
                     if method == SESSION_UPDATE:
-                        for event in parse_update(frame):
+                        for event in parse_update(frame, self.identity_namespace):
                             if event.tool_call_id and (event.tool_name or event.mcp_server_name):
                                 self._tool_identities[event.tool_call_id] = (
                                     event.tool_name,
@@ -91,7 +101,7 @@ class AcpSession:
                                 )
                             yield event
                     elif method == REQUEST_PERMISSION and frame.get("id") is not None:
-                        event = parse_permission(frame)
+                        event = parse_permission(frame, self.identity_namespace)
                         identity = self._tool_identities.get(event.tool_call_id)
                         if identity is not None:
                             event.tool_name, event.mcp_server_name = identity

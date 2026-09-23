@@ -4,6 +4,7 @@ export interface Bot {
   model?: string;
   agent?: string;
   effort?: string;
+  engine?: string;
 }
 
 export interface StoredEvent {

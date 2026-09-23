@@ -50,7 +50,7 @@ _TRACE_SECRET_CONTAINERS = frozenset(
 
 
 class AcpRuntime:
-    """One Kiro ACP process with a single stdout reader and session demux."""
+    """One ACP agent process with a single stdout reader and session demux."""
 
     def __init__(
         self,
@@ -60,12 +60,18 @@ class AcpRuntime:
         model: str = "",
         effort: str = "",
         command: list[str] | None = None,
+        engine_label: str = "Kiro",
+        initialize_params: dict[str, Any] | None = None,
+        identity_namespace: str = "kiro",
     ) -> None:
         self.cwd = Path(cwd).expanduser().resolve()
         self.agent = agent
         self.model = model
         self.effort = effort
         self.command = command
+        self.engine_label = engine_label
+        self._initialize_params = initialize_params
+        self.identity_namespace = identity_namespace
         self.process: asyncio.subprocess.Process | None = None
         self._reader_task: asyncio.Task | None = None
         self._stderr_task: asyncio.Task | None = None
@@ -101,18 +107,15 @@ class AcpRuntime:
         )
         self._reader_task = asyncio.create_task(self._reader_loop(), name="kiro-acp-reader")
         self._stderr_task = asyncio.create_task(self._stderr_loop(), name="kiro-acp-stderr")
-        result = await self.request(
-            INITIALIZE,
-            {
-                "clientInfo": {"name": "kyn", "version": "0.1.0"},
-                "protocolVersion": PROTOCOL_VERSION,
-                "clientCapabilities": {
-                    "fs": {"readTextFile": False, "writeTextFile": False},
-                    "terminal": False,
-                },
+        params = self._initialize_params or {
+            "clientInfo": {"name": "kyn", "version": "0.1.0"},
+            "protocolVersion": PROTOCOL_VERSION,
+            "clientCapabilities": {
+                "fs": {"readTextFile": False, "writeTextFile": False},
+                "terminal": False,
             },
-            timeout=30,
-        )
+        }
+        result = await self.request(INITIALIZE, params, timeout=30)
         self.capabilities = result.get("agentCapabilities", {}) if isinstance(result, dict) else {}
 
     def _kiro_command(self) -> list[str]:
@@ -165,7 +168,7 @@ class AcpRuntime:
             raise AcpError(f"session/new returned no sessionId: {response}")
         queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
         self._queues[session_id] = queue
-        return AcpSession(self, session_id, queue, response)
+        return AcpSession(self, session_id, queue, response, self.identity_namespace)
 
     async def load_session(
         self,
@@ -188,7 +191,7 @@ class AcpRuntime:
         response = await self.request(SESSION_LOAD, params, 120)
         queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
         self._queues[session_id] = queue
-        return AcpSession(self, session_id, queue, response)
+        return AcpSession(self, session_id, queue, response, self.identity_namespace)
 
     async def terminate_session(self, session_id: str) -> None:
         try:
@@ -237,7 +240,7 @@ class AcpRuntime:
 
     async def _write(self, message: dict[str, Any]) -> None:
         if not self.alive or not self.process or not self.process.stdin:
-            raise AcpProcessDied(self._dead_reason or "Kiro ACP process is not running")
+            raise AcpProcessDied(self._dead_reason or f"{self.engine_label} ACP process is not running")
         encoded = (json.dumps(message, separators=(",", ":")) + "\n").encode()
         self._trace("->", message)
         async with self._write_lock:
@@ -254,7 +257,7 @@ class AcpRuntime:
             while True:
                 line = await self.process.stdout.readline()
                 if not line:
-                    self._mark_dead(f"Kiro exited with code {self.process.returncode}")
+                    self._mark_dead(f"{self.engine_label} exited with code {self.process.returncode}")
                     return
                 try:
                     message = json.loads(line)
@@ -295,11 +298,11 @@ class AcpRuntime:
             await self._queues[session_id].put(message)
             return
 
-        if request_id is not None and message.get("method") == REQUEST_PERMISSION:
-            # A request with no visible owner must be answered fail-closed. If it
-            # is dropped, Kiro can remain blocked forever waiting for the client.
-            await self.respond(request_id, {"outcome": {"outcome": "cancelled"}})
-            return
+            if request_id is not None and message.get("method") == REQUEST_PERMISSION:
+                # A request with no visible owner must be answered fail-closed. If it
+                # is dropped, the agent can remain blocked forever waiting for the client.
+                await self.respond(request_id, {"outcome": {"outcome": "cancelled"}})
+                return
 
         if not session_id:
             for queue in list(self._queues.values()):

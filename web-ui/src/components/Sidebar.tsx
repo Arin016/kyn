@@ -3,7 +3,7 @@ import type { Channel, ChannelEvent, Surface } from "../types";
 import { KiroGlyph } from "./KiroGlyph";
 
 interface Props {
-  bots: { name: string; cwd?: string; model?: string; agent?: string }[];
+  bots: { name: string; cwd?: string; model?: string; agent?: string; engine?: string }[];
   selectedBot: string | null;
   onSelectBot: (name: string) => void;
   channels: Channel[];
@@ -119,7 +119,7 @@ export function Sidebar({
                 />
                 <span className="side-item-copy">
                   <span className="side-item-name">{bot.name}</span>
-                  <span className="side-item-meta">{bot.model || bot.agent || bot.cwd || "Kiro agent"}</span>
+                  <span className="side-item-meta">{bot.engine ? `${bot.engine} · ` : ""}{bot.model || bot.agent || bot.cwd || "Kiro agent"}</span>
                 </span>
               </button>
             </li>

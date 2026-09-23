@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from .harness_context import display_prompt
+from .providers import normalize_engine
+
 
 def default_home() -> Path:
     return Path(os.environ.get("KYN_HOME", "~/.kyn")).expanduser()
@@ -22,6 +24,7 @@ class Bot:
     agent: str = ""
     model: str = ""
     effort: str = ""
+    engine: str = "kiro"
     mcp_servers: list[dict[str, Any]] | None = None
 
 
@@ -44,15 +47,25 @@ class Store:
             connection.close()
 
     def put_bot(self, bot: Bot) -> None:
+        bot = Bot(
+            name=bot.name,
+            cwd=bot.cwd,
+            agent=bot.agent,
+            model=bot.model,
+            effort=bot.effort,
+            engine=normalize_engine(bot.engine),
+            mcp_servers=bot.mcp_servers,
+        )
         now = _now()
         with self.connect() as db:
             db.execute(
                 """
-                INSERT INTO bots(name, cwd, agent, model, effort, mcp_json, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO bots(name, cwd, agent, model, effort, engine, mcp_json, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(name) DO UPDATE SET
                     cwd=excluded.cwd, agent=excluded.agent, model=excluded.model,
-                    effort=excluded.effort, mcp_json=excluded.mcp_json, updated_at=excluded.updated_at
+                    effort=excluded.effort, engine=excluded.engine,
+                    mcp_json=excluded.mcp_json, updated_at=excluded.updated_at
                 """,
                 (
                     bot.name,
@@ -60,6 +73,7 @@ class Store:
                     bot.agent,
                     bot.model,
                     bot.effort,
+                    bot.engine,
                     json.dumps(bot.mcp_servers or []),
                     now,
                     now,
@@ -77,6 +91,7 @@ class Store:
             agent=row["agent"],
             model=row["model"],
             effort=row["effort"],
+            engine=row["engine"] if "engine" in row.keys() else "kiro",
             mcp_servers=json.loads(row["mcp_json"] or "[]"),
         )
 
@@ -90,6 +105,7 @@ class Store:
                 agent=row["agent"],
                 model=row["model"],
                 effort=row["effort"],
+                engine=row["engine"] if "engine" in row.keys() else "kiro",
                 mcp_servers=json.loads(row["mcp_json"] or "[]"),
             )
             for row in rows
@@ -207,6 +223,7 @@ class Store:
                     agent TEXT NOT NULL DEFAULT '',
                     model TEXT NOT NULL DEFAULT '',
                     effort TEXT NOT NULL DEFAULT '',
+                    engine TEXT NOT NULL DEFAULT 'kiro',
                     mcp_json TEXT NOT NULL DEFAULT '[]',
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
@@ -237,6 +254,12 @@ class Store:
                 );
                 """
             )
+            columns = {
+                str(row["name"])
+                for row in db.execute("PRAGMA table_info(bots)").fetchall()
+            }
+            if "engine" not in columns:
+                db.execute("ALTER TABLE bots ADD COLUMN engine TEXT NOT NULL DEFAULT 'kiro'")
 
 
 def _now() -> str:

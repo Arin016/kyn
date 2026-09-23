@@ -16,6 +16,7 @@ from kyn.store import Bot, Store
 class FakeSession:
     def __init__(self, session_id: str) -> None:
         self.session_id = session_id
+        self.config_options: list[tuple[str, str]] = []
 
     async def prompt(self, _message: str) -> AsyncIterator[Event]:
         yield Event(kind="complete", stop_reason="end_turn")
@@ -26,12 +27,16 @@ class FakeSession:
     async def set_model(self, _model: str) -> None:
         return None
 
+    async def set_config_option(self, config_id: str, value: str) -> None:
+        self.config_options.append((config_id, value))
+
 
 class FakeRuntime:
     instances: list["FakeRuntime"] = []
 
-    def __init__(self, cwd: str | Path, **_kwargs: Any) -> None:
+    def __init__(self, cwd: str | Path, **kwargs: Any) -> None:
         self.cwd = Path(cwd)
+        self.kwargs = kwargs
         self.closed = False
         self.servers: list[dict[str, Any]] = []
         self.session = FakeSession(f"fake-{len(self.instances) + 1}")
@@ -123,6 +128,57 @@ def test_legacy_inline_mcp_configuration_is_rejected(tmp_path, monkeypatch) -> N
         with pytest.raises(AcpError, match="governed plugin registry"):
             await orchestrator.open("legacy")
         assert FakeRuntime.instances == []
+
+    asyncio.run(scenario())
+
+
+def test_opencode_bot_uses_native_command_and_skips_native_resume(
+    tmp_path, monkeypatch
+) -> None:
+    async def scenario() -> None:
+        FakeRuntime.instances.clear()
+        monkeypatch.setattr("kyn.orchestrator.AcpRuntime", FakeRuntime)
+        monkeypatch.setattr(
+            "kyn.orchestrator.command_for", lambda engine, cwd: ["/bin/opencode", "acp"]
+        )
+        store = Store(tmp_path / "store")
+        store.put_bot(Bot(name="nova", cwd=str(tmp_path), engine="opencode"))
+        store.save_conversation("nova", "old-session", "/old/transcript")
+        orchestrator = BotOrchestrator(store, PluginRegistry(store))
+        try:
+            await orchestrator.open("nova")
+            runtime = FakeRuntime.instances[-1]
+            assert runtime.kwargs["command"] == ["/bin/opencode", "acp"]
+            assert runtime.kwargs["engine_label"] == "OpenCode"
+            assert runtime.kwargs["identity_namespace"] == "opencode"
+            assert runtime.created is True
+            assert runtime.loaded is False
+            assert store.conversation("nova") == ("old-session", "/old/transcript")
+        finally:
+            await orchestrator.close()
+
+    asyncio.run(scenario())
+
+
+def test_opencode_bot_model_is_applied_through_config_option(
+    tmp_path, monkeypatch
+) -> None:
+    async def scenario() -> None:
+        FakeRuntime.instances.clear()
+        monkeypatch.setattr("kyn.orchestrator.AcpRuntime", FakeRuntime)
+        monkeypatch.setattr(
+            "kyn.orchestrator.command_for", lambda engine, cwd: ["/bin/opencode", "acp"]
+        )
+        store = Store(tmp_path / "store")
+        store.put_bot(Bot(name="nova", cwd=str(tmp_path), engine="opencode", model="opencode/big-pickle"))
+        orchestrator = BotOrchestrator(store, PluginRegistry(store))
+        try:
+            await orchestrator.open("nova")
+            assert FakeRuntime.instances[-1].session.config_options == [
+                ("model", "opencode/big-pickle")
+            ]
+        finally:
+            await orchestrator.close()
 
     asyncio.run(scenario())
 

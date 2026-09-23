@@ -5,6 +5,7 @@ from typing import AsyncIterator
 
 from .protocol import Event
 from .plugins import PluginRegistry
+from .providers import ProviderError, command_for, initialize_params, spec
 from .runtime import AcpError, AcpRuntime
 from .session import AcpSession
 from .store import Bot, Store
@@ -40,6 +41,10 @@ class BotOrchestrator:
             bot = self.store.get_bot(bot_name)
             if bot is None:
                 raise AcpError(f"unknown bot {bot_name!r}; create it first")
+            try:
+                engine = spec(bot.engine)
+            except ProviderError as exc:
+                raise AcpError(str(exc)) from exc
             if bot.mcp_servers:
                 raise AcpError(
                     "legacy inline MCP configuration is disabled; migrate this bot's "
@@ -56,18 +61,28 @@ class BotOrchestrator:
             self._plugin_generation = generation
             self._cwd_override = cwd_override
             runtime_cwd = cwd_override or Path(bot.cwd).expanduser().resolve()
+            try:
+                command = command_for(engine.name, str(runtime_cwd))
+            except ProviderError as exc:
+                raise AcpError(str(exc)) from exc
             self.runtime = AcpRuntime(
                 runtime_cwd,
-                agent=bot.agent,
-                model=bot.model,
-                effort=bot.effort,
+                agent=bot.agent if engine.supports_modes else "",
+                model=bot.model if engine.supports_models else "",
+                effort=bot.effort if engine.name == "kiro" else "",
+                command=command,
+                engine_label=engine.label,
+                initialize_params=initialize_params(engine.name),
+                identity_namespace=engine.identity_namespace,
             )
             await self.runtime.start()
 
             # A per-run workspace is an isolated execution context. Reusing or
             # replacing the bot's durable conversation would mix cwd-specific
             # context and make a later normal chat point at the wrong tree.
-            saved = None if cwd_override is not None else self.store.conversation(bot.name)
+            saved = None
+            if cwd_override is None and engine.resume_native_conversation:
+                saved = self.store.conversation(bot.name)
             if saved:
                 session_id, transcript_path = saved
                 try:
@@ -88,21 +103,32 @@ class BotOrchestrator:
                         agent=bot.agent,
                         model=bot.model,
                         effort=bot.effort,
+                        command=command,
+                        engine_label=engine.label,
+                        initialize_params=initialize_params(engine.name),
+                        identity_namespace=engine.identity_namespace,
                     )
                     await self.runtime.start()
 
             if self.session is None:
                 self.session = await self.runtime.create_session(mcp_servers)
-                if bot.agent:
+                if engine.supports_modes and bot.agent:
                     await self.session.set_mode(bot.agent)
-                if bot.model:
-                    await self.session.set_model(bot.model)
+                if engine.supports_models and bot.model:
+                    if engine.model_config_option:
+                        await self.session.set_config_option(engine.model_config_option, bot.model)
+                    else:
+                        await self.session.set_model(bot.model)
 
             if self.plugins.config_generation(bot.name) != generation:
                 await self.close()
                 continue
-            transcript = str(_kiro_transcript(self.session.session_id))
-            if cwd_override is None:
+            transcript = (
+                str(_kiro_transcript(self.session.session_id))
+                if engine.name == "kiro"
+                else ""
+            )
+            if cwd_override is None and engine.resume_native_conversation:
                 self.store.save_conversation(bot.name, self.session.session_id, transcript)
             return self.session
         raise AcpError("plugin configuration changed repeatedly during session startup")

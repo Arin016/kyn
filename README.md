@@ -4,15 +4,17 @@
 
 **Beyond the terminal.**
 
-KYN is the local control plane for persistent Kiro agents, recurring work,
+KYN is the local control plane for persistent coding-agent bots, recurring work,
 and governed coding handoffs. Create named agents with clear jobs, reach them
 from your browser or phone, run several at once, and keep consequential actions
-behind deterministic boundaries.
+behind deterministic boundaries. Each bot runs one native engine: Kiro, OpenCode,
+or Codex.
 
 ![KYN control room](docs/screenshots/kyn-home-desktop.png)
 
-Kiro remains the agentic engine that reasons, writes code, and uses tools. KYN
-launches `kiro-cli acp` and owns the durable product layer around it:
+The native engine reasons, writes code, and uses tools. KYN launches that
+engine's ACP process (`kiro-cli acp`, `opencode acp`, or a Codex ACP bridge)
+and owns the durable product layer around it:
 identity, conversations, memory, queues, channels, schedules, approvals,
 workspaces, and orchestration.
 
