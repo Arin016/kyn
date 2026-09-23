@@ -612,6 +612,26 @@ def test_coding_lifecycle_routes_stop_at_human_handoff(tmp_path: Path) -> None:
         assert approved.json()["status"] == "ready"
         assert client.post("/api/coding-executions/coding-1/cancel").json()["status"] == "cancelled"
     assert coding.started and coding.closed
+
+
+def test_directories_route_lists_subdirectories(tmp_path: Path) -> None:
+    import subprocess
+
+    repo = tmp_path / "repo"
+    (repo / "sub").mkdir(parents=True)
+    (repo / "plain.txt").write_text("x")
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True, capture_output=True)
+    app = create_app(Store(tmp_path / "store"), FakeEngine())
+    with _test_client(app) as client:
+        listing = client.get("/api/directories", params={"path": str(repo)})
+        assert listing.status_code == 200
+        body = listing.json()
+        assert body["path"] == str(repo)
+        assert body["entries"] == [{"name": "sub", "path": str(repo / "sub"), "has_git": False}]
+        assert client.get("/api/directories", params={"path": str(repo / "plain.txt")}).status_code == 422
+        assert client.get("/api/directories", params={"path": "relative/path"}).status_code == 422
+
+
 def test_handoff_route_compiles_portable_bundle(tmp_path: Path) -> None:
     import subprocess
 

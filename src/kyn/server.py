@@ -94,6 +94,7 @@ if FastAPI is not None:
         agent: str | None = None
         model: str | None = None
         effort: str | None = None
+        engine: str | None = None
 
 
     class TurnBody(BaseModel):
@@ -599,6 +600,7 @@ def create_app(
             agent=(body.agent or "").strip(),
             model=(body.model or "").strip(),
             effort=(body.effort or "").strip(),
+            engine=(body.engine or "kiro").strip(),
         )
         active_store.put_bot(bot)
         ensure_bot_control(active_plugins, bot.name)
@@ -608,6 +610,50 @@ def create_app(
     async def get_bot(name: str) -> dict[str, Any]:
         bot = _require_bot(active_store, name)
         return _bot_payload(bot)
+
+    @app.get("/api/directories")
+    async def list_directories(path: str = Query(default="")) -> dict[str, Any]:
+        current = _validate_working_directory(path or str(Path.home()))
+        try:
+            children = sorted(current.iterdir(), key=lambda item: item.name.lower())
+        except OSError as exc:
+            raise HTTPException(status_code=422, detail="directory is not readable") from exc
+        entries: list[dict[str, Any]] = []
+        for child in children:
+            if child.name.startswith("."):
+                continue
+            try:
+                if not child.is_dir():
+                    continue
+            except OSError:
+                continue
+            try:
+                has_git = (child / ".git").exists()
+            except OSError:
+                has_git = False
+            entries.append(
+                {
+                    "name": child.name,
+                    "path": str(child),
+                    "has_git": has_git,
+                }
+            )
+            if len(entries) >= 500:
+                break
+        parent = current.parent
+        return {
+            "path": str(current),
+            "parent": str(parent) if parent != current else "",
+            "entries": entries,
+        }
+
+    @app.get("/api/engines/{engine}/models")
+    async def engine_models(engine: str) -> dict[str, Any]:
+        try:
+            models = await asyncio.to_thread(providers.models_for, engine)
+        except providers.ProviderError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+        return {"engine": engine, "models": models}
 
     @app.get("/api/bots/{name}/history")
     async def bot_history(name: str) -> dict[str, Any]:
@@ -1376,6 +1422,7 @@ def _bot_payload(bot: Bot) -> dict[str, Any]:
         "agent": bot.agent,
         "model": bot.model,
         "effort": bot.effort,
+        "engine": bot.engine,
         "mcp_servers": _json_safe(bot.mcp_servers or []),
     }
 
