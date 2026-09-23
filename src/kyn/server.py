@@ -33,6 +33,7 @@ from .run_store import RunRepository
 from .routines import RoutineNotFound, RoutineStore, Scheduler
 from .memory import SharedMemoryStore
 from .internal_control import CONTROL_PLUGIN_ID, ensure_bot_control, ensure_internal_control
+from .groups import GroupCoordinator, GroupNotFound, GroupStore
 from .interactions import InteractionConflict, InteractionNotFound, InteractionStore
 from . import providers
 from .handoff import HandoffError, compile_handoff
@@ -102,6 +103,10 @@ if FastAPI is not None:
         message: str = Field(min_length=1)
 
 
+    class BotModelBody(BaseModel):
+        model: str = Field(default="", max_length=200)
+
+
     class HandoffBody(BaseModel):
         to_engine: str = Field(min_length=1, max_length=32)
         budget_tokens: int = Field(default=12_000, ge=500, le=200_000)
@@ -118,6 +123,8 @@ if FastAPI is not None:
         max_turns_per_hour: int = Field(default=0, ge=0)
         max_concurrent_runs: int = Field(default=0, ge=0)
         max_daily_runs: int = Field(default=0, ge=0)
+        auto_failover: bool = False
+        failover_engines: list[str] = Field(default_factory=list)
 
 
     class CreateRoutineBody(BaseModel):
@@ -237,6 +244,23 @@ if FastAPI is not None:
         enabled: bool
 
 
+    class CreateGroupBody(BaseModel):
+        name: str = Field(min_length=1, max_length=100)
+        aim: str = Field(min_length=1, max_length=4_000)
+        members: list[str] = Field(min_length=1, max_length=12)
+        max_rounds: int = Field(default=2, ge=1, le=10)
+        start: bool = True
+
+
+    class GroupMessageBody(BaseModel):
+        text: str = Field(min_length=1, max_length=8_000)
+        respond: bool = True
+        mentions: list[str] = Field(default_factory=list, max_length=12)
+
+    class GroupContextBody(BaseModel):
+        note: str = Field(default="", max_length=4_000)
+
+
 def create_app(
     store: Store | None = None,
     engine: Any | None = None,
@@ -251,6 +275,8 @@ def create_app(
     coding_controller: CodingLifecycleController | None = None,
     channels: ChannelStore | None = None,
     channel_gateway: ChannelGateway | None = None,
+    groups: GroupStore | None = None,
+    group_coordinator: GroupCoordinator | None = None,
     live: LiveBus | None = None,
 ) -> Any:
     """Create the local daemon application.
@@ -294,23 +320,38 @@ def create_app(
         active_coding_store, active_engine, active_workspaces
     )
     active_channels = channels or ChannelStore(active_store)
+    active_groups = groups or GroupStore(active_store)
     active_live = live or LiveBus()
 
-    async def engine_submit(bot_name: str, message: str, actor: str) -> object:
+    async def engine_submit(
+        bot_name: str,
+        message: str,
+        actor: str,
+        run_id: str | None = None,
+    ) -> object:
         submit = active_engine.submit
         try:
             parameters = inspect.signature(submit).parameters
         except (TypeError, ValueError):
             parameters = {}
+        kwargs: dict[str, Any] = {}
         if "actor" in parameters:
-            return await _maybe_await(submit(bot_name, message, actor=actor))
-        return await _maybe_await(submit(bot_name, message))
+            kwargs["actor"] = actor
+        if run_id is not None and "run_id" in parameters:
+            kwargs["run_id"] = run_id
+        return await _maybe_await(submit(bot_name, message, **kwargs))
 
     async def scheduled_submit(bot_name: str, message: str) -> object:
         return await engine_submit(bot_name, message, "scheduler")
 
-    async def delegated_submit(bot_name: str, message: str) -> str:
-        return _run_id(await engine_submit(bot_name, message, "delegation"))
+    async def delegated_submit(
+        bot_name: str,
+        message: str,
+        run_id: str | None = None,
+    ) -> str:
+        return _run_id(
+            await engine_submit(bot_name, message, "delegation", run_id=run_id)
+        )
 
     async def delegated_wait(run_id: str) -> Mapping[str, Any]:
         while True:
@@ -393,7 +434,16 @@ def create_app(
         decide_interaction=channel_interaction_decision,
     )
 
+    async def group_submit(bot_name: str, message: str) -> str:
+        return _run_id(await engine_submit(bot_name, message, "group"))
+
     active_scheduler = scheduler or Scheduler(active_routines, scheduled_submit)
+    active_group_coordinator = group_coordinator or GroupCoordinator(
+        active_groups,
+        group_submit,
+        delegated_wait,
+        cancel=lambda run_id: active_engine.cancel(run_id),
+    )
     active_delegation_coordinator = delegation_coordinator or DelegationCoordinator(
         active_delegations,
         delegated_submit,
@@ -441,6 +491,8 @@ def create_app(
         app.state.coding_controller = active_coding_controller
         app.state.channels = active_channels
         app.state.channel_gateway = active_channel_gateway
+        app.state.groups = active_groups
+        app.state.group_coordinator = active_group_coordinator
         app.state.live = active_live
         engine_start_attempted = False
         coding_start_attempted = False
@@ -465,6 +517,7 @@ def create_app(
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
             try:
+                await _maybe_await(active_group_coordinator.close())
                 await _maybe_await(active_delegation_coordinator.close())
             finally:
                 try:
@@ -500,6 +553,8 @@ def create_app(
     app.state.coding_controller = active_coding_controller
     app.state.channels = active_channels
     app.state.channel_gateway = active_channel_gateway
+    app.state.groups = active_groups
+    app.state.group_coordinator = active_group_coordinator
     app.state.live = active_live
 
     @app.exception_handler(RequestValidationError)
@@ -566,6 +621,10 @@ def create_app(
     @app.exception_handler(ChannelNotFound)
     async def channel_not_found(_request: Request, _exc: ChannelNotFound) -> JSONResponse:
         return JSONResponse(status_code=404, content={"error": "channel_not_found"})
+
+    @app.exception_handler(GroupNotFound)
+    async def group_not_found(_request: Request, _exc: GroupNotFound) -> JSONResponse:
+        return JSONResponse(status_code=404, content={"error": "group_not_found"})
 
     @app.exception_handler(ChannelAuthenticationError)
     async def channel_authentication_error(
@@ -656,6 +715,31 @@ def create_app(
             raise HTTPException(status_code=422, detail=str(exc))
         return {"engine": engine, "models": models}
 
+    @app.post("/api/bots/{name}/model")
+    async def set_bot_model(name: str, body: BotModelBody) -> dict[str, Any]:
+        _require_bot(active_store, name)
+        switch = getattr(active_engine, "set_bot_model", None)
+        if switch is None:
+            bot = active_store.get_bot(name)
+            assert bot is not None
+            active_store.put_bot(
+                Bot(
+                    name=bot.name,
+                    cwd=bot.cwd,
+                    agent=bot.agent,
+                    model=body.model.strip(),
+                    effort=bot.effort,
+                    engine=bot.engine,
+                    mcp_servers=bot.mcp_servers,
+                )
+            )
+            return {"bot": name, "model": body.model.strip(), "applied_live": False}
+        try:
+            result = await _maybe_await(switch(name, body.model))
+        except KeyError:
+            raise HTTPException(status_code=404, detail=f"bot {name!r} was not found")
+        return {"bot": name, **_json_safe(result)}
+
     @app.get("/api/bots/{name}/history")
     async def bot_history(name: str) -> dict[str, Any]:
         _require_bot(active_store, name)
@@ -702,10 +786,38 @@ def create_app(
                 max_turns_per_hour=body.max_turns_per_hour,
                 max_concurrent_runs=body.max_concurrent_runs,
                 max_daily_runs=body.max_daily_runs,
+                auto_failover=body.auto_failover,
+                failover_engines=tuple(body.failover_engines),
             )
             return _json_safe(active_governance.set_policy(name, policy))
         except (TypeError, ValueError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/api/bots/{name}/usage")
+    async def bot_usage(
+        name: str, limit: int = Query(default=50, ge=1, le=500)
+    ) -> dict[str, Any]:
+        _require_bot(active_store, name)
+        turns = await asyncio.to_thread(active_store.history, name, limit)
+        tokens = 0
+        cost = 0.0
+        for turn in turns:
+            for event in turn.get("events", []):
+                raw = event.get("raw") if isinstance(event.get("raw"), dict) else {}
+                update = ((raw.get("params") or {}).get("update") or {})
+                if update.get("sessionUpdate") != "usage_update":
+                    continue
+                try:
+                    tokens += int(update.get("used") or 0)
+                    cost += float((update.get("cost") or {}).get("amount") or 0)
+                except (TypeError, ValueError):
+                    continue
+        return {
+            "bot": name,
+            "turns": len(turns),
+            "tokens": tokens,
+            "cost": {"amount": round(cost, 4), "currency": "USD"},
+        }
 
     @app.post("/api/bots/{name}/turns", status_code=202)
     async def submit_turn(name: str, body: TurnBody) -> dict[str, Any]:
@@ -1146,6 +1258,99 @@ def create_app(
         if event is None:
             raise ChannelNotFound(f"channel event {event_id!r} was not found")
         return event.snapshot()
+
+    # ---- Group chats -----------------------------------------------------
+
+    def _group_payload(group_id: str, *, after: int = 0, limit: int = 200) -> dict[str, Any]:
+        group = active_groups.require_group(group_id)
+        return {
+            "group": group.summary(),
+            "members": [_json_safe(_bot_payload(bot)) for bot in active_store.list_bots() if bot.name in group.members],
+            "messages": [
+                message.summary() for message in active_groups.messages(group_id, after=after, limit=limit)
+            ],
+            "running": active_group_coordinator.is_running(group_id),
+            "speaking": active_group_coordinator.speaking(group_id),
+            "context_note": active_groups.context_note(group_id),
+        }
+
+    @app.get("/api/groups")
+    async def list_groups() -> list[dict[str, Any]]:
+        return [
+            {
+                **group.summary(),
+                "running": active_group_coordinator.is_running(group.id),
+                "message_count": active_groups.count_messages(group.id),
+            }
+            for group in active_groups.list_groups()
+        ]
+
+    @app.post("/api/groups", status_code=201)
+    async def create_group(body: CreateGroupBody) -> dict[str, Any]:
+        for member in body.members:
+            _require_bot(active_store, member)
+        try:
+            group = await asyncio.to_thread(
+                active_groups.create_group,
+                body.name,
+                body.aim,
+                body.members,
+                max_rounds=body.max_rounds,
+            )
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if body.start:
+            await active_group_coordinator.start(group.id)
+        return _group_payload(group.id)
+
+    @app.get("/api/groups/{group_id}")
+    async def get_group(
+        group_id: str,
+        after: int = Query(default=0, ge=0),
+        limit: int = Query(default=200, ge=1, le=500),
+    ) -> dict[str, Any]:
+        return _group_payload(group_id, after=after, limit=limit)
+
+    @app.post("/api/groups/{group_id}/messages", status_code=201)
+    async def post_group_message(group_id: str, body: GroupMessageBody) -> dict[str, Any]:
+        try:
+            message = await active_group_coordinator.post_message(
+                group_id, body.text, respond=body.respond, mentions=body.mentions
+            )
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {"message": message.summary(), "group": _group_payload(group_id)}
+
+    @app.put("/api/groups/{group_id}/context")
+    async def set_group_context(group_id: str, body: GroupContextBody) -> dict[str, Any]:
+        """Pin or clear the handoff brief every member of the group sees."""
+        try:
+            group = await asyncio.to_thread(active_groups.set_context_note, group_id, body.note)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return _group_payload(group.id)
+
+    @app.post("/api/groups/{group_id}/start")
+    async def start_group(group_id: str, rounds: int | None = Query(default=None, ge=1, le=10)) -> dict[str, Any]:
+        try:
+            await active_group_coordinator.start(group_id, rounds=rounds)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return _group_payload(group_id)
+
+    @app.post("/api/groups/{group_id}/stop")
+    async def stop_group(group_id: str) -> dict[str, Any]:
+        await active_group_coordinator.stop(group_id)
+        return _group_payload(group_id)
+
+    @app.delete("/api/groups/{group_id}")
+    async def delete_group(group_id: str) -> dict[str, Any]:
+        active_groups.require_group(group_id)
+        if active_group_coordinator.is_running(group_id):
+            await active_group_coordinator.stop(group_id)
+        if not active_groups.delete_group(group_id):
+            raise GroupNotFound(group_id)
+        return {"deleted": True, "id": group_id}
 
     @app.post("/hooks/slack/{binding_id}")
     async def ingest_slack(binding_id: str, request: Request) -> Any:
