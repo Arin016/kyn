@@ -3,22 +3,29 @@ import api from "./api";
 import { wsUrl, useWebSocket } from "./hooks/useWebSocket";
 import { ToastProvider, useToast } from "./hooks/useToast";
 import { useStickToBottom } from "./lib/useStickToBottom";
-import { isMarketingDeploy } from "./lib/deploy";
+import { isDemoParam, isMarketingDeploy } from "./lib/deploy";
 import {
   DEMO_BOTS,
   DEMO_CHANNEL,
   DEMO_CHANNEL_EVENTS,
+  DEMO_GROUP_DETAIL,
   DEMO_THREADS,
   demoManagementData,
   demoResponseFor,
 } from "./lib/demoConsole";
 import EngineeringPage from "./pages/EngineeringPage";
 import LandingPage from "./pages/LandingPage";
+import { BotAvatar } from "./components/BotAvatar";
 import { KiroGlyph } from "./components/KiroGlyph";
+import { ModelSwitcher } from "./components/ModelSwitcher";
+import { buildBotCommands } from "./lib/slash";
+import { applyTheme } from "./lib/theme";
+import { KIRO_MODELS } from "./components/dialogs/Dialogs";
 import { Thread } from "./components/chat/Thread";
 import type { Part } from "./components/chat/Message";
 import { Composer } from "./components/chat/Composer";
 import { Sidebar } from "./components/Sidebar";
+import { GroupChat } from "./components/group/GroupChat";
 import { WorkflowPlayground } from "./components/workflows/WorkflowPlayground";
 import { InspectPanel, type InspectTab, type ManagementData } from "./components/inspect/InspectPanel";
 import type { WorkActions } from "./components/inspect/WorkTab";
@@ -27,6 +34,8 @@ import {
   ChannelDialog,
   CodingDialog,
   CreateBotDialog,
+  CreateGroupDialog,
+  HandoffDialog,
   PluginDialog,
   RoutineDialog,
 } from "./components/dialogs/Dialogs";
@@ -37,6 +46,7 @@ import type {
   ChannelEvent,
   CodingExecution,
   DelegationPlan,
+  Group as GroupChatRecord,
   HistoryTurn,
   Interaction,
   LiveMessage,
@@ -50,7 +60,7 @@ import type {
   TimelineEntry,
 } from "./types";
 
-type DialogName = "bot" | "routine" | "plugin" | "channel" | "coding" | null;
+type DialogName = "bot" | "group" | "routine" | "plugin" | "channel" | "coding" | "handoff" | null;
 
 interface ActiveRun {
   id: string;
@@ -127,14 +137,21 @@ function mapHistoryToParts(turns: HistoryTurn[]): Part[] {
         buffer += text;
         sawText = true;
       } else if (kind === "thinking" || kind === "agent_thought_chunk") {
-        if (text) parts.push({ type: "reasoning", id: key, text, running: false });
+        if (text.trim()) parts.push({ type: "reasoning", id: key, text, running: false });
       } else if (kind.includes("tool")) {
-        parts.push({
-          type: "tool",
-          id: key,
-          title: String(event.title || text || "Tool activity"),
-          status: "done",
-        });
+        const title = String(event.title || text || "Tool activity");
+        const previous = parts[parts.length - 1];
+        if (previous && previous.type === "tool" && previous.title === title) {
+          previous.title = `${title} ×${(previous.repeat || 1) + 1}`;
+          previous.repeat = (previous.repeat || 1) + 1;
+        } else {
+          parts.push({
+            type: "tool",
+            id: key,
+            title,
+            status: "done",
+          });
+        }
       }
     });
     if (sawText) parts.push({ type: "assistant-text", text: buffer });
@@ -257,7 +274,7 @@ function RunStream({
 
 function ControlRoom({ onExit }: { onExit: () => void }) {
   const { showToast } = useToast();
-  const marketing = isMarketingDeploy;
+  const marketing = isMarketingDeploy || isDemoParam;
   const demoStreamRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -268,10 +285,16 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
 
   const [bots, setBots] = useState<Bot[]>([]);
   const [selectedBot, setSelectedBot] = useState<Bot | null>(null);
+  const [groups, setGroups] = useState<GroupChatRecord[]>([]);
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [surface, setSurface] = useState<Surface>({ kind: "local" });
   const [phase, setPhase] = useState<RunPhase>("idle");
   const [runDetail, setRunDetail] = useState("");
   const [activeRun, setActiveRun] = useState<ActiveRun | null>(null);
+  const [queuedRuns, setQueuedRuns] = useState<string[]>([]);
+  const [runStartedAt, setRunStartedAt] = useState<number | null>(null);
+  const queuedRef = useRef<string[]>([]);
+  queuedRef.current = queuedRuns;
   const [parts, setParts] = useState<Part[]>([]);
   const [permissions, setPermissions] = useState<PermissionRequest[]>([]);
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
@@ -285,7 +308,8 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
   const [dialog, setDialog] = useState<DialogName>(null);
   const [workspace, setWorkspace] = useState<"conversation" | "workflows">("conversation");
 
-  const [management, setManagement] = useState<ManagementData>({
+   const [usageRefreshKey, setUsageRefreshKey] = useState(0);
+   const [management, setManagement] = useState<ManagementData>({
     policy: null,
     routines: [],
     plugins: [],
@@ -316,15 +340,32 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
       detail: detail || kind.replaceAll("_", " "),
       at: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     };
-    setTimeline((current) => [entry, ...current]);
+    setTimeline((current) => {
+      const latest = current[0];
+      if (latest && latest.kind === kind && latest.detail === entry.detail) return current;
+      return [entry, ...current];
+    });
   }, []);
 
-  const finishRun = useCallback((nextPhase: RunPhase, detail: string) => {
-    setPhase(nextPhase);
-    setRunDetail(detail);
+   const finishRun = useCallback((nextPhase: RunPhase, detail: string) => {
+     setPhase(nextPhase);
+     setRunDetail(detail);
+     setUsageRefreshKey((value) => value + 1);
     setPermissions([]);
     setParts((current) => finalizeParts(current));
     setActiveRun(null);
+    setRunStartedAt(null);
+  }, []);
+
+  const attachNextQueued = useCallback(() => {
+    const next = queuedRef.current[0];
+    if (!next) return;
+    setQueuedRuns((current) => current.slice(1));
+    setActiveRun({ id: next });
+    setPhase("running");
+    setRunDetail("Running queued message…");
+    setRunStartedAt(Date.now());
+    addTimeline("info", "Starting queued message");
   }, []);
 
   const receiveEvent = useCallback(
@@ -340,6 +381,7 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
           finishRun("idle", envelope.run?.stop_reason || (status === "cancelled" ? "Run cancelled" : "Run complete"));
           addTimeline("complete", "Run completed");
         }
+        attachNextQueued();
         return;
       }
       if (envelope.type === "error" && !envelope.kind) {
@@ -421,7 +463,7 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
         showToast(message, true);
       }
     },
-    [addTimeline, finishRun, showToast],
+    [addTimeline, attachNextQueued, finishRun, showToast],
   );
 
   const handleStreamEvent = useCallback((envelope: StreamEnvelope) => receiveEvent(envelope), [receiveEvent]);
@@ -564,6 +606,7 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
     (next: Surface) => {
       setSurface(next);
       setActiveRun(null);
+      setQueuedRuns([]);
       setPhase("idle");
       setRunDetail("");
       if (next.kind === "channel") {
@@ -579,7 +622,9 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
       const bot = bots.find((item) => item.name === name);
       if (!bot) return;
       setActiveRun(null);
+      setQueuedRuns([]);
       setSelectedBot(bot);
+      setActiveGroupId(null);
       setSurface({ kind: "local" });
       setPhase("idle");
       setRunDetail("");
@@ -628,16 +673,35 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [marketing]);
 
+  const loadGroups = useCallback(async () => {
+    if (marketing) {
+      setGroups([DEMO_GROUP_DETAIL.group]);
+      return;
+    }
+    try {
+      setGroups(await api.groups());
+    } catch {
+      setGroups([]);
+    }
+  }, [marketing]);
+
   useEffect(() => {
     void loadBots();
+    void loadGroups();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const openGroup = useCallback((groupId: string) => {
+    setActiveGroupId(groupId);
+    setWorkspace("conversation");
+    setInspectPinned(false);
   }, []);
 
   // ---- Turns -----------------------------------------------------------
 
   const submitTurn = useCallback(
     async (message: string) => {
-      if (!selectedBot || activeRun || surface.kind === "channel") return;
+      if (!selectedBot || surface.kind === "channel") return;
       if (marketing) {
         const full = demoResponseFor(message);
         setParts((current) => [
@@ -673,15 +737,27 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
         return;
       }
       setParts((current) => [...current, { type: "user", text: message }]);
-      setPhase("starting");
-      setRunDetail("Creating a persistent Kiro run…");
+      const queueBehind = activeRunRef.current !== null;
+      if (!queueBehind) {
+        setPhase("starting");
+        setRunDetail("Creating a persistent run…");
+        setRunStartedAt(Date.now());
+      }
       try {
         const data = await api.submitTurn(selectedBot.name, message);
         const id = data.run_id || data.id || data.run?.id;
         if (!id) throw new Error("The server did not return a run ID.");
+        if (queueBehind) {
+          const position = queuedRef.current.length + 1;
+          setQueuedRuns((current) => [...current, String(id)]);
+          addTimeline("info", `Message queued (#${position} in line)`);
+          showToast(`Queued #${position} — runs after the current turn`);
+          return;
+        }
         setActiveRun({ id: String(id) });
         setPhase("running");
-        setRunDetail("Kiro is working in this bot's persistent session.");
+        setRunDetail("Working in this bot's persistent session.");
+        setRunStartedAt(Date.now());
       } catch (error) {
         const message2 = (error as Error).message;
         setParts((current) => [...current, { type: "error", text: message2 }]);
@@ -689,7 +765,7 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
         showToast(message2 || "Could not start run", true);
       }
     },
-    [selectedBot, activeRun, surface.kind, finishRun, showToast, marketing, addTimeline],
+    [selectedBot, surface.kind, finishRun, showToast, marketing, addTimeline],
   );
 
   const cancelRun = useCallback(async () => {
@@ -710,6 +786,70 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
       showToast((error as Error).message || "Could not cancel run", true);
     }
   }, [activeRun, showToast, marketing, finishRun]);
+
+  /** Mid-conversation model switch — the daemon reports whether it went live. */
+  const switchModel = useCallback(
+    async (model: string): Promise<boolean> => {
+      if (!selectedBot) return false;
+      if (marketing) {
+        showToast("Demo preview — model switching needs a local daemon.", false);
+        return false;
+      }
+      try {
+        const data = await api.setBotModel(selectedBot.name, model);
+        setSelectedBot((bot) => (bot ? { ...bot, model } : bot));
+        setBots((list) =>
+          list.map((bot) => (bot.name === selectedBot.name ? { ...bot, model } : bot)),
+        );
+        showToast(
+          data.applied_live
+            ? `Model switched to ${model} — live session updated.`
+            : `Model set to ${model} — applies from the next run.`,
+        );
+        addTimeline("info", `Model → ${model}${data.applied_live ? " (live)" : " (next run)"}`);
+        return true;
+      } catch (error) {
+        showToast((error as Error).message || "Could not switch model", true);
+        return false;
+      }
+    },
+    [selectedBot, showToast, marketing, addTimeline],
+  );
+
+  /** Slash-command palette for the composer — type "/" to open it. */
+  const botCommands = useMemo(
+    () =>
+      buildBotCommands({
+        engine: selectedBot?.engine || "kiro",
+        currentModel: selectedBot?.model,
+        marketing,
+        busy: phase === "running" || phase === "starting" || phase === "waiting",
+        modelChoices: async () => {
+          const engine = (selectedBot?.engine || "kiro").toLowerCase();
+          if (engine === "kiro") {
+            return KIRO_MODELS.filter((model) => model.id !== "__custom");
+          }
+          if (engine === "codex") return [];
+          try {
+            const data = await api.engines(engine);
+            return (data.models || []).map((model) => ({
+              id: model.id,
+              label: model.label || model.id,
+              detail: model.label && model.label !== model.id ? model.id : undefined,
+            }));
+          } catch {
+            return [];
+          }
+        },
+        onModel: (id) => void switchModel(id),
+        onStop: () => void cancelRun(),
+        onDialog: (name) => setDialog(name),
+        onWorkflows: () => setWorkspace("workflows"),
+        onInspect: () => setInspectPinned(true),
+        onTheme: (theme) => applyTheme(theme),
+      }),
+    [selectedBot, marketing, phase, switchModel, cancelRun],
+  );
 
   const decidePermission = useCallback(
     async (id: string, decision: "once" | "reject") => {
@@ -796,6 +936,10 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
         if (!selectedBot) return;
         void guard(() => api.unbindPlugin(selectedBot.name, pluginId));
       },
+      onUpdatePlugin: (pluginId, payload) => {
+        if (!selectedBot) return;
+        void guard(() => api.updatePluginBinding(selectedBot.name, pluginId, payload));
+      },
     }),
     [guard, selectedBot],
   );
@@ -822,7 +966,7 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
   // ---- Derived -----------------------------------------------------------
 
   const busy = phase === "starting" || phase === "running" || phase === "waiting" || phase === "stopping";
-  const inspectOpen = Boolean(inspectPinned || busy || permissions.length > 0);
+  const inspectOpen = Boolean(inspectPinned || permissions.length > 0);
   const localLive = phase === "running" || phase === "waiting" || phase === "starting";
 
   const channelLabel = useMemo(() => {
@@ -836,8 +980,11 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
     [surface, channelEvents, channelLabel, parts],
   );
 
-  const composerDisabled =
-    !selectedBot || surface.kind === "channel" || phase === "running" || phase === "waiting" || phase === "starting";
+  const composerDisabled = !selectedBot || surface.kind === "channel";
+  const activeGroup = useMemo(
+    () => groups.find((group) => group.id === activeGroupId) || null,
+    [groups, activeGroupId],
+  );
 
   const closeDialog = useCallback(() => setDialog(null), []);
   const doneAndReload = useCallback(() => {
@@ -857,6 +1004,10 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
         bots={bots}
         selectedBot={selectedBot?.name ?? null}
         onSelectBot={selectBotByName}
+        groups={groups}
+        activeGroup={activeGroupId}
+        onSelectGroup={openGroup}
+        onNewGroup={() => setDialog("group")}
         channels={channels}
         channelEvents={channelEvents}
         surface={surface}
@@ -871,7 +1022,10 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
           marketing ? showToast("Demo preview — create bots with `uv run kyn bot create`.", false) : setDialog("bot")
         }
         workspace={workspace}
-        onWorkspaceChange={setWorkspace}
+        onWorkspaceChange={(next) => {
+          setActiveGroupId(null);
+          setWorkspace(next);
+        }}
       />
 
       <main className="main">
@@ -905,11 +1059,32 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
             >
               <KiroGlyph size={20} />
             </button>
-            <span style={{ fontWeight: 600, fontSize: "0.95rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {workspace === "workflows" ? "Workflow playground" : selectedBot ? selectedBot.name : "Choose a bot"}
+            {!activeGroupId && selectedBot && workspace === "conversation" && (
+              <BotAvatar name={selectedBot.name} size={30} className="header-bot-avatar" />
+            )}
+            <span className="header-title">
+              {activeGroupId
+                ? activeGroup?.name || "Group chat"
+                : workspace === "workflows"
+                  ? "Workflow playground"
+                  : selectedBot
+                    ? selectedBot.name
+                    : "Choose a bot"}
             </span>
+            {!activeGroupId && selectedBot && workspace === "conversation" && (
+              <ModelSwitcher bot={selectedBot} onSwitch={switchModel} disabled={marketing} />
+            )}
           </div>
           <div className="header-actions">
+            {!activeGroupId && selectedBot && workspace === "conversation" && (
+              <button
+                type="button"
+                className="workflow-launch"
+                onClick={() => (marketing ? showToast("Demo preview — handoffs need a local daemon.", false) : setDialog("handoff"))}
+              >
+                Handoff
+              </button>
+            )}
             <button
               type="button"
               className="workflow-launch"
@@ -942,7 +1117,20 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
           </div>
         </header>
 
-        {workspace === "workflows" ? (
+        {activeGroupId ? (
+          <GroupChat
+            key={activeGroupId}
+            groupId={activeGroupId}
+            bots={bots}
+            marketing={marketing}
+            onBack={() => setActiveGroupId(null)}
+            onChanged={() => void loadGroups()}
+            onDeleted={() => {
+              setActiveGroupId(null);
+              void loadGroups();
+            }}
+          />
+        ) : workspace === "workflows" ? (
           <WorkflowPlayground
             bots={bots}
             plans={management.delegations}
@@ -963,6 +1151,7 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
                   ? `What should ${selectedBot.name} do?`
                   : "Create a bot to begin"
             }
+            botName={selectedBot?.name}
             suggestions={SUGGESTIONS}
             onSuggestion={(text) => void submitTurn(text)}
             onApproval={(id, decision) => void decidePermission(id, decision)}
@@ -987,7 +1176,8 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
               : selectedBot?.model || selectedBot?.agent || selectedBot?.cwd || "Select a bot to begin"
           }
           mirrorNote={surface.kind === "channel"}
-          placeholder={selectedBot ? "Message bot…" : "Select a bot to begin"}
+          placeholder={selectedBot ? `Message ${selectedBot.name}…` : "Select a bot to begin"}
+          commands={botCommands}
           onSubmit={(message) => void submitTurn(message)}
           onStop={() => void cancelRun()}
         />
@@ -1009,13 +1199,28 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
         workActions={workActions}
         safetyActions={safetyActions}
         hasBot={Boolean(selectedBot)}
-      />
+        bot={selectedBot}
+        runStartedAt={runStartedAt}
+        queue={queuedRuns.length}
+         onSwitchModel={switchModel}
+         switchingDisabled={marketing}
+         onHandoff={() => setDialog("handoff")}
+         onStopRun={() => void cancelRun()}
+         usageRefreshKey={usageRefreshKey}
+       />
 
       {dialog === "bot" && <CreateBotDialog {...dialogProps} />}
+      {dialog === "group" && (
+        <CreateGroupDialog
+          {...dialogProps}
+          onCreated={(groupId) => openGroup(groupId)}
+        />
+      )}
       {dialog === "routine" && <RoutineDialog {...dialogProps} />}
       {dialog === "plugin" && <PluginDialog {...dialogProps} />}
       {dialog === "channel" && <ChannelDialog {...dialogProps} />}
       {dialog === "coding" && <CodingDialog {...dialogProps} />}
+      {dialog === "handoff" && <HandoffDialog open onClose={closeDialog} bot={selectedBot} bots={bots} onDone={doneAndReload} />}
 
       {activeRun && <RunStream key={activeRun.id} run={activeRun} onEvent={handleStreamEvent} />}
     </div>
@@ -1025,6 +1230,7 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
 type View = "landing" | "engineering" | "console";
 
 function resolveView(): View {
+  if (isDemoParam) return "console";
   if (isMarketingDeploy) {
     if (location.hash.includes("console")) return "console";
     if (location.hash.includes("engineering")) return "engineering";
@@ -1070,6 +1276,11 @@ function AppShell() {
     setView("engineering");
   }, []);
 
+  const enterDemo = useCallback(() => {
+    history.replaceState(null, "", "?demo=1#console");
+    setView("console");
+  }, []);
+
   const exitToLanding = useCallback(() => {
     const url = new URL(location.href);
     url.hash = "";
@@ -1085,7 +1296,7 @@ function AppShell() {
       ) : view === "engineering" ? (
         <EngineeringPage onEnterConsole={enterConsole} onBackToLanding={exitToLanding} />
       ) : (
-        <LandingPage onEnterConsole={enterConsole} onOpenEngineering={openEngineering} />
+        <LandingPage onEnterConsole={enterConsole} onOpenEngineering={openEngineering} onTryDemo={enterDemo} />
       )}
     </>
   );

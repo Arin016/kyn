@@ -5,6 +5,9 @@ import type {
   ChannelEvent,
   CodingExecution,
   DelegationPlan,
+  Group,
+  GroupDetail,
+  GroupMessage,
   Interaction,
   MemoryRecord,
   Plugin,
@@ -54,14 +57,49 @@ async function request<T = unknown>(path: string, options: RequestInit = {}): Pr
   return data as T;
 }
 
+export interface DirectoryEntry {
+  name: string;
+  path: string;
+  has_git: boolean;
+}
+
+export interface DirectoryListing {
+  path: string;
+  parent: string;
+  entries: DirectoryEntry[];
+}
+
+export interface BotUsage {
+  bot: string;
+  turns: number;
+  tokens: number;
+  cost: { amount: number; currency: string };
+}
+
 export const api = {
   listBots: () => request<unknown>("/api/bots"),
+  engines: (engine: string) =>
+    request<{ engine: string; models: { id: string; label: string }[] }>(
+      `/api/engines/${encodeURIComponent(engine)}/models`,
+    ),
+  directories: (path: string) =>
+    request<DirectoryListing>(`/api/directories?path=${encodeURIComponent(path)}`),
   createBot: (payload: Record<string, unknown>) =>
     request<{ bot?: { name: string } } & { name: string }>("/api/bots", {
       method: "POST",
       body: JSON.stringify(payload),
     }),
   history: (bot: string) => request<unknown>(`/api/bots/${encodeURIComponent(bot)}/history`),
+  setBotModel: (bot: string, model: string) =>
+    request<{ bot?: string; model?: string; applied_live?: boolean }>(
+      `/api/bots/${encodeURIComponent(bot)}/model`,
+      { method: "POST", body: JSON.stringify({ model }) },
+    ),
+  handoff: (bot: string, toEngine: string) =>
+    request<{ prompt?: string; warnings?: string[]; total_estimated_tokens?: number }>(
+      `/api/bots/${encodeURIComponent(bot)}/handoff`,
+      { method: "POST", body: JSON.stringify({ to_engine: toEngine }) },
+    ),
   policy: (bot: string) => request<Policy>(`/api/bots/${encodeURIComponent(bot)}/policy`),
   savePolicy: (bot: string, payload: Policy) =>
     request(`/api/bots/${encodeURIComponent(bot)}/policy`, {
@@ -72,6 +110,8 @@ export const api = {
     request<{ events: MemoryRecord[] }>(
       `/api/bots/${encodeURIComponent(bot)}/memory?limit=50`,
     ),
+  usage: (bot: string) =>
+    request<BotUsage>(`/api/bots/${encodeURIComponent(bot)}/usage?limit=50`),
   submitTurn: (bot: string, message: string) =>
     request<{ run_id?: string; id?: string; run?: { id?: string } }>(
       `/api/bots/${encodeURIComponent(bot)}/turns`,
@@ -95,6 +135,15 @@ export const api = {
     request(`/api/bots/${encodeURIComponent(bot)}/plugins/${encodeURIComponent(pluginId)}`, {
       method: "PUT",
       body: JSON.stringify({ allow_tools: ["*"] }),
+    }),
+  updatePluginBinding: (
+    bot: string,
+    pluginId: string,
+    payload: { enabled?: boolean; allow_tools?: string[]; deny_tools?: string[] },
+  ) =>
+    request(`/api/bots/${encodeURIComponent(bot)}/plugins/${encodeURIComponent(pluginId)}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
     }),
   unbindPlugin: (bot: string, pluginId: string) =>
     request(`/api/bots/${encodeURIComponent(bot)}/plugins/${encodeURIComponent(pluginId)}`, {
@@ -131,6 +180,40 @@ export const api = {
   deleteChannel: (id: string) =>
     request(`/api/channels/${encodeURIComponent(id)}`, { method: "DELETE" }),
   channelEvents: () => request<ChannelEvent[]>("/api/channel-events?limit=50"),
+  groups: () => request<Group[]>("/api/groups"),
+  group: (id: string, after = 0, limit = 300) =>
+    request<GroupDetail>(
+      `/api/groups/${encodeURIComponent(id)}?after=${after}&limit=${limit}`,
+    ),
+  createGroup: (payload: {
+    name: string;
+    aim: string;
+    members: string[];
+    max_rounds?: number;
+    start?: boolean;
+  }) =>
+    request<GroupDetail>("/api/groups", { method: "POST", body: JSON.stringify(payload) }),
+  postGroupMessage: (id: string, text: string, respond = true, mentions: string[] = []) =>
+    request<{ message: GroupMessage; group: GroupDetail }>(
+      `/api/groups/${encodeURIComponent(id)}/messages`,
+      { method: "POST", body: JSON.stringify({ text, respond, mentions }) },
+    ),
+  setGroupContext: (id: string, note: string) =>
+    request<GroupDetail>(`/api/groups/${encodeURIComponent(id)}/context`, {
+      method: "PUT",
+      body: JSON.stringify({ note }),
+    }),
+  startGroup: (id: string, rounds?: number) =>
+    request<GroupDetail>(
+      `/api/groups/${encodeURIComponent(id)}/start${rounds ? `?rounds=${rounds}` : ""}`,
+      { method: "POST" },
+    ),
+  stopGroup: (id: string) =>
+    request<GroupDetail>(`/api/groups/${encodeURIComponent(id)}/stop`, { method: "POST" }),
+  deleteGroup: (id: string) =>
+    request<{ deleted: boolean; id: string }>(`/api/groups/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
   pollRun: (runId: string, after: number) =>
     request<unknown>(`/api/runs/${encodeURIComponent(runId)}?after=${after}`),
   cancelRun: (runId: string) =>

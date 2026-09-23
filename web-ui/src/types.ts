@@ -30,6 +30,47 @@ export interface Surface {
   threadKey?: string;
 }
 
+export interface Group {
+  id: string;
+  name: string;
+  aim: string;
+  members: string[];
+  max_rounds: number;
+  status: string;
+  error?: string;
+  created_at?: string;
+  updated_at?: string;
+  /** Bot slated to speak next (mention routing); present on detail payloads. */
+  speaker?: string | null;
+  speaker_reason?: string;
+  /** Present on list responses. */
+  running?: boolean;
+  message_count?: number;
+}
+
+export type GroupRole = "human" | "bot" | "system";
+
+export interface GroupMessage {
+  id: number;
+  group_id: string;
+  author: string;
+  role: GroupRole;
+  text: string;
+  round?: number;
+  run_id?: string;
+  created_at?: string;
+}
+
+export interface GroupDetail {
+  group: Group;
+  members: Bot[];
+  messages: GroupMessage[];
+  running: boolean;
+  speaking: { bot?: string; run_id?: string };
+  /** Pinned handoff brief every member sees above the transcript. */
+  context_note?: string;
+}
+
 export type RunPhase = "idle" | "starting" | "running" | "waiting" | "stopping" | "error";
 
 export interface RunState {
@@ -76,6 +117,10 @@ export interface Policy {
   max_turns_per_hour?: number;
   max_concurrent_runs?: number;
   max_daily_runs?: number;
+  auto_failover?: boolean;
+  failover_engines?: string[];
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface Routine {
