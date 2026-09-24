@@ -1,13 +1,14 @@
 # macOS app and iPhone access
 
-The macOS app is a local shell around the Ari control room. It starts the
-bundled Ari service on `127.0.0.1:8765`, then opens the first-run setup screen
-in the default browser. The marketing site remains a separate Vercel build.
-Ari data stays under `~/.ari`.
+The macOS app opens a native window and displays the Ari control room in the
+system WebKit view. It starts the bundled Ari service on `127.0.0.1:8765` and
+keeps the first-run setup inside the app; external links open in the browser.
+The marketing site remains a separate Vercel build. Ari data stays under
+`~/.ari`.
 
 ## Build an Apple Silicon DMG
 
-On a Mac with Node.js and `uv`:
+On a Mac with Node.js, `uv`, and Xcode Command Line Tools:
 
 ```bash
 bash scripts/build-macos-dmg.sh
@@ -15,16 +16,27 @@ bash scripts/build-macos-dmg.sh
 
 The script prints the path to a new `dist/ari-macos-<timestamp>/Ari-macOS-arm64.dmg`
 (or `x86_64` on an Intel Mac). It builds the React UI, bundles the Python
-service, and places both in a small macOS app wrapper. Each DMG is built for the
-architecture of the Mac running the script. Build a second time on an Intel Mac
-to produce the Intel artifact.
+service, compiles the native AppKit/WebKit window, and places them in the app
+bundle. Each DMG is built for the architecture of the Mac running the script.
+Build a second time on an Intel Mac to produce the Intel artifact.
 
-This development build is ad-hoc signed. Before sharing it as a smooth public
-download, sign it with a Developer ID certificate and notarize it; the build
-script does not claim Gatekeeper-ready distribution. Add the signing and
-notarization credentials in the release environment before publishing a DMG.
+The default development build is ad-hoc signed and is not suitable as a
+Gatekeeper-ready public download. Use the official distribution mode below for
+friend or public downloads.
+
+For an official distribution build, install a Developer ID Application
+certificate in the login keychain and create a `notarytool` Keychain profile.
+Then set `ARI_DISTRIBUTION=1`, `ARI_DEVELOPER_ID_IDENTITY`, and
+`ARI_NOTARY_PROFILE` when running the build script. The script signs the
+embedded service and app with hardened runtime, submits the app and DMG for
+notarization, staples tickets, and checks Gatekeeper. Keep all credentials in
+the local keychain; never commit them to the repository.
 
 ## First run
+
+The setup page scrolls inside the app window when its content is taller than
+the available window height. The window can be resized, and the setup remains
+usable on smaller displays.
 
 The setup screen checks for `kiro-cli`, `opencode`, and `codex-acp`. Selecting
 **Install CLI** runs the selected engine's published installer; Codex setup

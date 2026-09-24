@@ -9,6 +9,7 @@ import {
 import type { Bot, GroupDetail, GroupMessage } from "../../types";
 import { BotAvatar } from "../BotAvatar";
 import { Composer } from "../chat/Composer";
+import { ThinkingDots } from "../chat/ThinkingDots";
 import { useToast } from "../../hooks/useToast";
 
 const POLL_MS = 1500;
@@ -87,6 +88,8 @@ export function GroupChat({
   const [messages, setMessages] = useState<GroupMessage[]>([]);
   const [error, setError] = useState("");
   const [contextNote, setContextNote] = useState("");
+  const [briefOpen, setBriefOpen] = useState(false);
+  const contextDraftDirtyRef = useRef(false);
   const lastIdRef = useRef(0);
   const refreshGenRef = useRef(0);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -101,7 +104,8 @@ export function GroupChat({
         const data = await api.group(groupId, full ? 0 : lastIdRef.current);
         if (refreshGenRef.current !== generation) return;
         setDetail(data);
-        setContextNote(data.context_note || "");
+        if (!contextDraftDirtyRef.current)
+          setContextNote(data.context_note || "");
         setMessages((current) =>
           full
             ? mergeMessages([], data.messages)
@@ -121,12 +125,16 @@ export function GroupChat({
   );
 
   useEffect(() => {
+    contextDraftDirtyRef.current = false;
+    setBriefOpen(false);
+    setContextNote("");
     if (marketing) {
       const demo = {
         ...DEMO_GROUP_DETAIL,
         group: { ...DEMO_GROUP_DETAIL.group, id: groupId },
       };
       setDetail(demo);
+      setContextNote(demo.context_note || "");
       setMessages(demo.messages);
       lastIdRef.current = demo.messages.length;
       return;
@@ -234,10 +242,11 @@ export function GroupChat({
         const data = await api.setGroupContext(groupId, note);
         setDetail(data);
         setContextNote(data.context_note || "");
+        contextDraftDirtyRef.current = false;
         showToast(
           note.trim()
-            ? "Handoff brief pinned — every agent in this thread will see it."
-            : "Handoff brief cleared.",
+            ? "Shared context pinned for this group."
+            : "Shared context cleared.",
         );
       } catch (exc) {
         showToast((exc as Error).message || "Could not pin the brief", true);
@@ -284,6 +293,10 @@ export function GroupChat({
   }, [groupId, marketing, onDeleted, showToast]);
 
   const status = group?.status || "idle";
+  const savedContext = (detail?.context_note || "").trim();
+  const hasPinnedContext = Boolean(savedContext);
+  const contextDirty = contextNote.trim() !== savedContext;
+  const contextId = `group-context-${groupId}`;
 
   return (
     <div className="group-surface">
@@ -345,6 +358,21 @@ export function GroupChat({
         </div>
 
         <div className="group-actions">
+          <button
+            type="button"
+            className={`mini-ghost group-context-toggle${hasPinnedContext ? " is-pinned" : ""}`}
+            aria-label={hasPinnedContext ? "Edit shared context" : "Add shared context"}
+            aria-expanded={briefOpen}
+            aria-controls={contextId}
+            onClick={() => setBriefOpen((open) => !open)}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+              <path d="M7 4.75h10a2 2 0 0 1 2 2v12.5H5V6.75a2 2 0 0 1 2-2Z" strokeLinejoin="round" />
+              <path d="M8.5 9h7M8.5 12.5h7M8.5 16h4" strokeLinecap="round" />
+            </svg>
+            <span>Brief</span>
+            {hasPinnedContext && <span className="group-context-pinned">Pinned</span>}
+          </button>
           {running ? (
             <button
               type="button"
@@ -373,6 +401,58 @@ export function GroupChat({
           </button>
         </div>
       </header>
+
+      {briefOpen && (
+        <section className="group-context" id={contextId} aria-label="Shared group context">
+          <div className="group-context-head">
+            <div className="group-context-heading">
+              <span className="group-context-title">Shared context</span>
+              <span className="group-context-hint">Visible to every bot in this chat.</span>
+            </div>
+            <button
+              type="button"
+              className="group-context-close"
+              aria-label="Close shared context"
+              onClick={() => setBriefOpen(false)}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <path d="m6 6 12 12M18 6 6 18" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
+          <textarea
+            className="group-context-input"
+            rows={3}
+            value={contextNote}
+            placeholder="Share decisions, findings, or constraints the next bot should know."
+            onChange={(event) => {
+              const next = event.target.value;
+              contextDraftDirtyRef.current = next.trim() !== (detail?.context_note || "").trim();
+              setContextNote(next);
+            }}
+            aria-label="Shared context for every bot in this group"
+          />
+          <div className="group-context-actions">
+            {contextNote.trim() && (
+              <button
+                type="button"
+                className="mini-ghost"
+                onClick={() => void saveContext("")}
+              >
+                Clear
+              </button>
+            )}
+            <button
+              type="button"
+              className="mini-primary"
+              disabled={!contextDirty}
+              onClick={() => void saveContext(contextNote)}
+            >
+              {contextNote.trim() ? "Pin brief" : "Clear brief"}
+            </button>
+          </div>
+        </section>
+      )}
 
       {group?.aim ? <p className="group-aim">{group.aim}</p> : null}
       {error ? <p className="group-error">{error}</p> : null}
@@ -419,7 +499,7 @@ export function GroupChat({
               <BotAvatar
                 name={speaking}
                 size={32}
-                className="group-msg-avatar"
+                className="group-msg-avatar thinking-avatar"
               />
               <div className="group-msg-body">
                 <span className="group-msg-meta">
@@ -430,9 +510,7 @@ export function GroupChat({
                   className="group-bubble is-typing"
                   aria-label={`${speaking} is typing`}
                 >
-                  <span />
-                  <span />
-                  <span />
+                  <ThinkingDots />
                 </div>
               </div>
             </li>
@@ -444,49 +522,6 @@ export function GroupChat({
             </li>
           ) : null}
         </ol>
-      </div>
-
-      <div className="group-context">
-        <div className="group-context-head">
-          <span className="group-context-title">Handoff brief</span>
-          <span className="group-context-hint">
-            Pinned context every agent sees — carry findings across bots without
-            loss.
-          </span>
-        </div>
-        <textarea
-          className="group-context-input"
-          rows={2}
-          value={contextNote}
-          placeholder="e.g. scout mapped the blockers; writer owns the changelog. Reviewer already approved sections 1–3…"
-          onChange={(event) => setContextNote(event.target.value)}
-          onBlur={() => {
-            if (contextNote.trim() !== (detail?.context_note || "").trim())
-              void saveContext(contextNote);
-          }}
-          aria-label="Pinned handoff brief for every agent in this group"
-        />
-        {contextNote.trim() !== (detail?.context_note || "").trim() && (
-          <div className="group-context-actions">
-            <button
-              type="button"
-              className="mini-primary"
-              onClick={() => void saveContext(contextNote)}
-            >
-              Pin brief
-            </button>
-            <button
-              type="button"
-              className="mini-ghost"
-              onClick={() => {
-                setContextNote("");
-                void saveContext("");
-              }}
-            >
-              Clear
-            </button>
-          </div>
-        )}
       </div>
 
       <Composer

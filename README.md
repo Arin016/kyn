@@ -81,12 +81,49 @@ machine with `ari serve`, or on Fly.io for long-running hosting ([docs/deploy.md
 - Return Telegram-originated tool gates as inline **Allow once** and **Deny**
   buttons; every decision is tied to the originating run and channel identity.
 
-## Quick start
+## Setup (one command)
 
 ```bash
-cd /Users/arin.mallanna/personal/kiro-bot
+git clone https://github.com/Arin016/kyn.git
+cd kyn
+bash scripts/setup-local.sh
+```
+
+Then open `http://127.0.0.1:8765/`.
+
+The script does everything with no extra steps: it installs `uv` and
+Node.js if they are missing, installs all Python and UI dependencies,
+builds the web UI, frees port `8765` if something already holds it, and
+starts the control room. Override with `PORT=9000 KYN_HOST=127.0.0.1 bash
+scripts/setup-local.sh`. The service binds to loopback by default.
+Before remote access, configure `KYN_ACCESS_TOKEN`, allowed origins, and a
+private or authenticated network path. To build the macOS app and DMG, see
+[docs/desktop-app.md](docs/desktop-app.md).
+The repository includes a dependency-free fallback control room under
+`web/`; building `web-ui/` adds the full React landing, product guide, and console
+experience under `web/dist/`.
+
+Prerequisites (installed automatically by the script when absent): `curl`,
+`uv`, Node.js/npm (via Homebrew on macOS, `apt-get` on Debian/Ubuntu —
+otherwise install Node.js LTS from https://nodejs.org/ and re-run).
+
+### Paste this to your coding agent
+
+```
+Clone https://github.com/Arin016/kyn.git, run bash scripts/setup-local.sh
+from the repo root, and get the Ari control room working at
+http://127.0.0.1:8765/. If port 8765 is busy, stop whatever holds it and
+retry. Verify with: curl http://127.0.0.1:8765/app/ (expect HTTP 200) and
+curl http://127.0.0.1:8765/api/health (expect {"status":"ok"}). Do not
+expose the service on a non-loopback interface without setting
+KYN_ACCESS_TOKEN first.
+```
+
+## Manual setup and usage
+
+```bash
 uv sync --extra server --extra dev
-uv run ari bot create builder --cwd /Users/arin.mallanna/personal --engine opencode
+uv run ari bot create builder --cwd . --engine opencode
 uv run ari chat builder
 ```
 
@@ -96,21 +133,13 @@ For a one-shot task:
 uv run ari ask builder "Inspect this repository and summarize it."
 ```
 
-For the browser control room:
+For the browser control room without the setup script:
 
 ```bash
 npm --prefix web-ui install
 npm --prefix web-ui run build
 uv run ari serve
 ```
-
-Then open `http://127.0.0.1:8765/`. The service binds to loopback by default.
-Before remote access, configure `KYN_ACCESS_TOKEN`, allowed origins, and a
-private or authenticated network path. To build the macOS app and DMG, see
-[docs/desktop-app.md](docs/desktop-app.md).
-The repository includes a dependency-free fallback control room under
-`web/`; building `web-ui/` adds the full React landing, product guide, and console
-experience under `web/dist/`.
 
 ### Product demo video (Remotion)
 
