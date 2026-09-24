@@ -429,7 +429,7 @@ class RunRepository:
             ).fetchone()
             if row is None:
                 return None
-            db.execute(
+            cursor = db.execute(
                 """
                 UPDATE durable_runs
                 SET status = 'running', lease_owner = ?, lease_token = ?,
@@ -439,6 +439,11 @@ class RunRepository:
                 """,
                 (owner, token, _iso(expires), _iso(timestamp), _iso(timestamp), row["run_id"]),
             )
+            if cursor.rowcount == 0:
+                # Lost a concurrent claim: the guarded UPDATE matched nothing,
+                # so this token owns nothing. Claiming victory anyway would
+                # execute the run twice and poison the winner with InvalidLease.
+                return None
             updated = db.execute(
                 "SELECT * FROM durable_runs WHERE run_id = ?", (row["run_id"],)
             ).fetchone()

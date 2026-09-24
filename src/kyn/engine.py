@@ -17,6 +17,8 @@ from .providers import ProviderError, command_for
 from .protocol import Event
 from .store import Bot, Store
 from .run_store import RunLease as DurableRunLease, RunRepository
+from .run_store import InvalidLease as DurableInvalidLease
+from .run_store import InvalidTransition as DurableInvalidTransition
 from .workspaces import (
     WorkspaceExecution,
     WorkspaceExecutionSpec,
@@ -202,7 +204,9 @@ class BotWorker:
             return
         if self.orchestrator is not None and self.orchestrator.session is not None:
             try:
-                await self.orchestrator.session.cancel()
+                # A wedged child can block stdin.drain() forever; never let a
+                # polite session/cancel hold the worker hostage past this.
+                await asyncio.wait_for(self.orchestrator.session.cancel(), timeout=10)
             except Exception:
                 # Local cancellation still has to release the worker even when
                 # the ACP process dies before accepting session/cancel.
@@ -703,6 +707,7 @@ class Engine:
         assert self._run_repository is not None
         after_created_at: str | None = None
         after_run_id: str | None = None
+        deferred: list[Any] = []
         while True:
             batch = await asyncio.to_thread(
                 self._run_repository.list_runs,
@@ -712,13 +717,30 @@ class Engine:
                 after_run_id=after_run_id,
             )
             if not batch:
-                return
+                break
             for durable in batch:
-                await self._restore(durable)
+                try:
+                    await self._restore(durable)
+                except Exception:
+                    # Never let one poisoned row abort the whole recovery, and
+                    # never destroy queued user work on a transient error —
+                    # retry once below, then leave it queued for next boot.
+                    _logger.exception("Deferred recovery of run %s", durable.run_id)
+                    deferred.append(durable)
             if len(batch) < 1_000:
-                return
+                break
             after_created_at = batch[-1].created_at
             after_run_id = batch[-1].run_id
+        if deferred:
+            await asyncio.sleep(5)
+            for durable in deferred:
+                try:
+                    await self._restore(durable)
+                except Exception:
+                    _logger.exception(
+                        "Recovery of run %s failed twice; leaving it queued",
+                        durable.run_id,
+                    )
 
     def _acquire_store_lock(self) -> None:
         lock_store = self._store
@@ -894,8 +916,11 @@ class Engine:
                         lease_seconds=_DURABLE_LEASE_SECONDS,
                     )
                     if lease is None:
-                        await asyncio.to_thread(
-                            self._run_repository.cancel_queued, run.id
+                        # Another owner holds this row (claimed between list
+                        # and claim). Leave it alone — cancelling here would
+                        # destroy someone else's live run.
+                        _logger.warning(
+                            "Recovery of run %s skipped: claimed elsewhere", run.id
                         )
                     else:
                         await asyncio.to_thread(
@@ -910,8 +935,11 @@ class Engine:
                         )
                     return
             except Exception:
-                await asyncio.to_thread(self._run_repository.cancel_queued, run.id)
-                return
+                # Transient recovery failure: leave the row queued (the outer
+                # retry pass gets one more attempt) rather than destroying
+                # user work that simply failed to resume.
+                _logger.exception("Recovery of run %s failed; leaving queued", run.id)
+                raise
         if self._governance is not None:
             try:
                 run.governance_lease = await asyncio.to_thread(
@@ -921,8 +949,10 @@ class Engine:
                     actor="recovery",
                 )
             except Exception:
-                await asyncio.to_thread(self._run_repository.cancel_queued, run.id)
-                return
+                _logger.exception(
+                    "Recovery of run %s failed on governance; leaving queued", run.id
+                )
+                raise
         self._runs[run.id] = run
         await self._enqueue(run)
 
@@ -1011,48 +1041,57 @@ class Engine:
                 raise InvalidRunOperation("the bot worker is no longer available")
 
             await worker.decide_permission(run.id, actual_request_id, decision)
-            if self._interactions is not None:
-                interactions = await asyncio.to_thread(
-                    self._interactions.list,
-                    bot_name=run.bot_name,
-                    status="pending",
-                    limit=500,
-                )
-                matching = next(
-                    (
-                        item
-                        for item in interactions
-                        if item.run_id == run.id and item.request_id == token
-                    ),
-                    None,
-                )
-                if matching is not None:
-                    await asyncio.to_thread(
-                        self._interactions.resolve,
-                        matching.id,
-                        decision,
-                        actor=run.actor or "user",
-                    )
             async with run.condition:
                 run.pending_permissions.pop(token, None)
                 if not run.pending_permissions and not run.terminal:
                     run.status = "running"
                 run.condition.notify_all()
-            await self._mark_durable_running(run)
-            if self._governance is not None and canonical_tool_name:
-                await asyncio.to_thread(
-                    self._governance.record_permission_decision,
-                    run.bot_name,
-                    run.id,
-                    token,
-                    canonical_tool_name,
-                    "deny" if decision == "reject" else "approve",
-                    actor="user",
-                    reason={
-                        "once": "user_allowed_once",
-                        "reject": "user_rejected",
-                    }[decision],
+            try:
+                if self._interactions is not None:
+                    interactions = await asyncio.to_thread(
+                        self._interactions.list,
+                        bot_name=run.bot_name,
+                        status="pending",
+                        limit=500,
+                    )
+                    matching = next(
+                        (
+                            item
+                            for item in interactions
+                            if item.run_id == run.id and item.request_id == token
+                        ),
+                        None,
+                    )
+                    if matching is not None:
+                        await asyncio.to_thread(
+                            self._interactions.resolve,
+                            matching.id,
+                            decision,
+                            actor=run.actor or "user",
+                        )
+                await self._mark_durable_running(run)
+                if self._governance is not None and canonical_tool_name:
+                    await asyncio.to_thread(
+                        self._governance.record_permission_decision,
+                        run.bot_name,
+                        run.id,
+                        token,
+                        canonical_tool_name,
+                        "deny" if decision == "reject" else "approve",
+                        actor="user",
+                        reason={
+                            "once": "user_allowed_once",
+                            "reject": "user_rejected",
+                        }[decision],
+                    )
+            except Exception:
+                # The agent already received the decision above; the token stays
+                # popped so a retry cannot double-approve. Surface the
+                # bookkeeping failure instead of corrupting approval state.
+                _logger.exception(
+                    "Permission bookkeeping failed for run %s", run.id
                 )
+                raise
         return run.snapshot()
 
     async def cancel(self, run_id: str) -> dict[str, Any]:
@@ -1078,11 +1117,17 @@ class Engine:
                 if run.terminal or run.finishing:
                     return
             if self._run_repository is not None and run.durable_lease is None:
-                lease = await asyncio.to_thread(
-                    self._run_repository.claim,
-                    run.id,
-                    f"engine-{id(self)}:{run.bot_name}",
-                    lease_seconds=_DURABLE_LEASE_SECONDS,
+                # Shielded: a cancel landing mid-claim must not strand the DB
+                # row as running-with-a-token-nobody-holds (unstoppable now,
+                # duplicated after restart). The shield only spans one fast
+                # local commit; cancellation is delivered right after.
+                lease = await asyncio.shield(
+                    asyncio.to_thread(
+                        self._run_repository.claim,
+                        run.id,
+                        f"engine-{id(self)}:{run.bot_name}",
+                        lease_seconds=_DURABLE_LEASE_SECONDS,
+                    )
                 )
                 if lease is None:
                     raise InvalidRunOperation("durable run could not be claimed")
@@ -1307,11 +1352,21 @@ class Engine:
                 ),
             )
             if self._run_repository is not None and run.durable_lease is not None:
-                await asyncio.to_thread(
-                    self._run_repository.mark_waiting_permission,
-                    run.id,
-                    run.durable_lease.token,
-                )
+                async with run.permission_lock:
+                    still_waiting = (
+                        token in run.pending_permissions
+                        and not run.terminal
+                        and run.status == "waiting_permission"
+                    )
+                if still_waiting:
+                    # A fast approval may have fully resolved while the slow
+                    # I/O above was in flight; writing waiting_permission after
+                    # that would resurrect approved work on the next reboot.
+                    await asyncio.to_thread(
+                        self._run_repository.mark_waiting_permission,
+                        run.id,
+                        run.durable_lease.token,
+                    )
             if self._governance is not None:
                 await asyncio.to_thread(
                     self._governance.record_permission_decision,
@@ -1339,18 +1394,27 @@ class Engine:
                 if not run.pending_permissions and not run.terminal:
                     run.status = "running"
                 run.condition.notify_all()
-            await self._mark_durable_running(run)
-            if self._governance is not None:
-                await asyncio.to_thread(
-                    self._governance.record_permission_decision,
-                    run.bot_name,
-                    run.id,
-                    token,
-                    canonical_tool_name,
-                    decision_name,
-                    actor="policy",
-                    reason=decision_reason,
+            try:
+                await self._mark_durable_running(run)
+                if self._governance is not None:
+                    await asyncio.to_thread(
+                        self._governance.record_permission_decision,
+                        run.bot_name,
+                        run.id,
+                        token,
+                        canonical_tool_name,
+                        decision_name,
+                        actor="policy",
+                        reason=decision_reason,
+                    )
+            except Exception:
+                # The agent already received the auto-decision above; the token
+                # stays popped so it cannot be answered twice. Surface the
+                # bookkeeping failure instead of corrupting approval state.
+                _logger.exception(
+                    "Auto permission bookkeeping failed for run %s", run.id
                 )
+                raise
 
     async def _mark_durable_running(self, run: _RunState) -> None:
         if self._run_repository is not None and run.durable_lease is not None:
@@ -1432,23 +1496,48 @@ class Engine:
                     run.workspace_manifest = manifest.summary()
                 if self._run_repository is not None:
                     if run.durable_lease is not None:
-                        await asyncio.to_thread(
-                            self._run_repository.finish,
-                            run.id,
-                            run.durable_lease.token,
-                            status,
-                        )
+                        try:
+                            await asyncio.to_thread(
+                                self._run_repository.finish,
+                                run.id,
+                                run.durable_lease.token,
+                                status,
+                            )
+                        except (DurableInvalidLease, DurableInvalidTransition):
+                            # The durable row is already lost (lease expired or
+                            # reaped). The in-memory run must still go terminal —
+                            # abandoning it here strands subscribers forever and
+                            # requeues finished work on the next boot.
+                            _logger.warning(
+                                "Durable commit failed for run %s; finalizing in memory",
+                                run.id,
+                            )
                     elif status == "cancelled":
-                        await asyncio.to_thread(
-                            self._run_repository.cancel_queued,
-                            run.id,
-                        )
-            except BaseException:
+                        try:
+                            await asyncio.to_thread(
+                                self._run_repository.cancel_queued,
+                                run.id,
+                            )
+                        except (DurableInvalidLease, DurableInvalidTransition, KeyError):
+                            _logger.warning(
+                                "Durable cancel failed for run %s; finalizing in memory",
+                                run.id,
+                            )
+            except asyncio.CancelledError:
                 async with run.condition:
                     run.finishing = False
                     run.finished_at = None
                     run.condition.notify_all()
                 raise
+            except Exception as exc:
+                # An unexpected failure inside finalization must never strand
+                # the run as forever-running (stuck subscribers, duplicate
+                # requeue on reboot). Record it and fall through to the
+                # terminal transition below.
+                _logger.exception("Run finalization failed for %s", run.id)
+                error = f"{error}; {_error_text(exc)}" if error else _error_text(exc)
+                if status == "complete":
+                    status = "failed"
             if self._governance is not None and run.governance_lease is not None:
                 try:
                     await asyncio.to_thread(
