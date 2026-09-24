@@ -446,6 +446,7 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [channelEvents, setChannelEvents] = useState<ChannelEvent[]>([]);
   const [unread, setUnread] = useState<Record<string, number>>({});
+  const [pendingApprovals, setPendingApprovals] = useState(0);
   const [connected, setConnected] = useState(false);
   const [inspectPinned, setInspectPinned] = useState(false);
   const [inspectTab, setInspectTab] = useState<InspectTab>("run");
@@ -1109,6 +1110,30 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
     }, 30000);
     return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [marketing]);
+
+  // Sidebar inbox badge: how many approval asks are waiting on the operator.
+  // Quiet poll — the Work inbox page owns error display and decisions.
+  useEffect(() => {
+    if (marketing) return;
+    let alive = true;
+    const load = async () => {
+      try {
+        const items = await api.interactions(undefined, "pending");
+        if (alive) setPendingApprovals(items.length);
+      } catch {
+        // Keep the last count on failure; a badge must never flap to zero.
+      }
+    };
+    void load();
+    const timer = window.setInterval(() => {
+      if (document.hidden) return;
+      void load();
+    }, 5000);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
   }, [marketing]);
 
   // Self-heal on reconnect: the daemon just came back (deploy, restart,
@@ -1811,6 +1836,7 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
         surface={surface}
         onSelectSurface={selectSurface}
         unread={unread}
+        inboxBadge={pendingApprovals}
         localLive={localLive}
         connected={connected}
         connectionLabel={marketing ? "Demo preview" : undefined}

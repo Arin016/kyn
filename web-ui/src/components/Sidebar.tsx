@@ -22,6 +22,8 @@ interface Props {
   surface: Surface;
   onSelectSurface: (surface: Surface) => void;
   unread: Record<string, number>;
+  /** Pending approval asks waiting on the operator; badges Work inbox. */
+  inboxBadge?: number;
   localLive: boolean;
   connected: boolean;
   connectionLabel?: string;
@@ -40,6 +42,7 @@ export function Sidebar({
   activeGroup,
   onSelectGroup,
   onNewGroup,
+  inboxBadge = 0,
   localLive,
   connected,
   connectionLabel,
@@ -92,7 +95,7 @@ export function Sidebar({
         <div className="sidebar-heading">Workspace</div>
         <ul className="sidebar-list" aria-label="Workspace views">
           <li><button type="button" className={`side-item${workspace === "conversation" ? " selected" : ""}`} onClick={() => onWorkspaceChange("conversation")}><span className="side-item-mark" aria-hidden /><span className="side-item-copy"><span className="side-item-name">Conversation</span><span className="side-item-meta">Talk to one bot</span></span></button></li>
-          <li><button type="button" className={`side-item${workspace === "inbox" ? " selected" : ""}`} onClick={() => onWorkspaceChange("inbox")}><span className="side-item-mark live" aria-hidden /><span className="side-item-copy"><span className="side-item-name">Work inbox</span><span className="side-item-meta">Approvals and progress</span></span></button></li>
+          <li><button type="button" className={`side-item${workspace === "inbox" ? " selected" : ""}`} onClick={() => onWorkspaceChange("inbox")}><span className="side-item-mark live" aria-hidden /><span className="side-item-copy"><span className="side-item-name">Work inbox</span><span className="side-item-meta">Approvals and progress</span></span>{inboxBadge > 0 && <span className="side-unread" aria-label={`${inboxBadge} approvals waiting`}>{inboxBadge > 99 ? "99+" : inboxBadge}</span>}</button></li>
           <li><button type="button" className={`side-item${workspace === "workflows" ? " selected" : ""}`} onClick={() => onWorkspaceChange("workflows")}><span className="side-item-mark live" aria-hidden /><span className="side-item-copy"><span className="side-item-name">Workflows</span><span className="side-item-meta">Build a team graph</span></span></button></li>
           <li><button type="button" className={`side-item${workspace === "tasks" ? " selected" : ""}`} onClick={() => onWorkspaceChange("tasks")}><span className="side-item-mark live" aria-hidden /><span className="side-item-copy"><span className="side-item-name">Tasks</span><span className="side-item-meta">Branch, review, merge</span></span></button></li>
           <li><button type="button" className={`side-item${workspace === "plugins" ? " selected" : ""}`} onClick={() => onWorkspaceChange("plugins")}><span className="side-item-mark live" aria-hidden /><span className="side-item-copy"><span className="side-item-name">Plugin Place</span><span className="side-item-meta">Connect apps to bots</span></span></button></li>
