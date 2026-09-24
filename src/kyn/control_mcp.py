@@ -160,12 +160,16 @@ def _call_tool(base: str, caller: str, name: str, args: dict[str, Any]) -> Any:
     if name == "get_team_plan":
         return _http(base, "GET", f"/api/delegations/{_quote(args, 'plan_id')}")
     if name == "create_team_plan":
+        _authorize(base, caller, name)
         return _http(base, "POST", "/api/delegations", args)
     if name == "start_team_plan":
+        _authorize(base, caller, name)
         return _http(base, "POST", f"/api/delegations/{_quote(args, 'plan_id')}/start", {})
     if name == "cancel_team_plan":
+        _authorize(base, caller, name)
         return _http(base, "POST", f"/api/delegations/{_quote(args, 'plan_id')}/cancel", {})
     if name == "call_bot":
+        _authorize(base, caller, name)
         target = str(args.get("bot_name") or "").strip()
         message = str(args.get("message") or "").strip()
         if not target or not message:
@@ -192,11 +196,34 @@ def _call_tool(base: str, caller: str, name: str, args: dict[str, Any]) -> Any:
             if str(run.get("status")) in {"complete", "failed", "cancelled"}:
                 return run
             time.sleep(0.25)
+        # The caller times out, but the callee must not keep burning tokens in
+        # the background. Cancel best-effort; report the original timeout if
+        # the cancel call itself fails.
+        try:
+            _http(base, "POST", f"/api/runs/{urllib.parse.quote(run_id, safe='')}/cancel", {})
+        except Exception:
+            pass
         raise TimeoutError(
-            f"bot call {run_id} did not finish before the timeout "
+            f"bot call {run_id} did not finish before the timeout and was cancelled "
             f"(callee status: {run.get('status', 'unknown')})"
         )
     raise ValueError(f"unknown control tool {name!r}")
+
+
+def _authorize(base_url: str, caller: str, tool: str) -> None:
+    """Enforce the hard delegation guardrail before a coordination tool runs.
+
+    Direct turns may only delegate on an explicit operator ask; group rounds
+    are free. A denial raises, so the model receives it as a tool error and
+    must do the work itself (or ask the operator first).
+    """
+    try:
+        verdict = _http(base_url, "POST", "/api/control/authorize", {"caller": caller, "tool": tool})
+    except Exception as exc:
+        raise RuntimeError(f"delegation guardrail unreachable: {exc}") from exc
+    if not isinstance(verdict, dict) or not verdict.get("allowed"):
+        reason = str((verdict or {}).get("reason") or "delegation denied")
+        raise RuntimeError(reason)
 
 
 def _caller_snapshot(base_url: str, caller: str) -> str:

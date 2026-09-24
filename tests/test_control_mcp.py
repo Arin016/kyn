@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from kyn.control_mcp import _call_tool, _caller_snapshot, _dispatch, _validated_base_url
 from kyn.internal_control import CONTROL_PLUGIN_ID, ensure_internal_control
 from kyn.plugins import PluginRegistry
@@ -66,6 +68,8 @@ def test_call_bot_attaches_caller_workspace_snapshot(tmp_path: Path, monkeypatch
     posted: dict[str, object] = {}
 
     def fake_http(base: str, method: str, path: str, payload: object = None) -> object:
+        if path == "/api/control/authorize":
+            return {"allowed": True, "reason": ""}
         if path == "/api/bots/nick":
             return {"name": "nick", "cwd": str(repo), "engine": "opencode"}
         if path == "/api/bots/sherpa/turns":
@@ -89,6 +93,8 @@ def test_call_bot_proceeds_without_snapshot_when_caller_unknown(monkeypatch) -> 
     posted: dict[str, object] = {}
 
     def fake_http(base: str, method: str, path: str, payload: object = None) -> object:
+        if path == "/api/control/authorize":
+            return {"allowed": True, "reason": ""}
         if path == "/api/bots/ghost":
             raise RuntimeError("no such bot")
         if path == "/api/bots/sherpa/turns":
@@ -105,7 +111,12 @@ def test_call_bot_proceeds_without_snapshot_when_caller_unknown(monkeypatch) -> 
 def test_call_bot_timeout_reports_callee_status(monkeypatch) -> None:
     import kyn.control_mcp as control_mcp
 
+    calls: list[tuple[str, str]] = []
+
     def fake_http(base: str, method: str, path: str, payload: object = None) -> object:
+        calls.append((method, path))
+        if path == "/api/control/authorize":
+            return {"allowed": True, "reason": ""}
         if path == "/api/bots/nick":
             return {"name": "nick", "cwd": "/tmp", "engine": "kiro"}
         if path.endswith("/turns"):
@@ -124,3 +135,41 @@ def test_call_bot_timeout_reports_callee_status(monkeypatch) -> None:
         assert "running" in str(exc)
     else:
         raise AssertionError("expected TimeoutError")
+    # A timed-out callee must be cancelled, not left running in the background.
+    assert ("POST", "/api/runs/run-9/cancel") in calls
+
+
+def test_call_bot_denied_without_explicit_ask(monkeypatch) -> None:
+    import kyn.control_mcp as control_mcp
+
+    def fake_http(base: str, method: str, path: str, payload: object = None) -> object:
+        if path == "/api/control/authorize":
+            return {"allowed": False, "reason": "Delegation is disabled in this direct chat"}
+        raise AssertionError(f"must not reach {method} {path}")
+
+    monkeypatch.setattr(control_mcp, "_http", fake_http)
+    with pytest.raises(RuntimeError, match="Delegation is disabled"):
+        _call_tool(
+            "http://127.0.0.1:8765",
+            "sodms-reviewer",
+            "call_bot",
+            {"bot_name": "chief", "message": "take this over"},
+        )
+
+
+def test_create_team_plan_denied_without_explicit_ask(monkeypatch) -> None:
+    import kyn.control_mcp as control_mcp
+
+    def fake_http(base: str, method: str, path: str, payload: object = None) -> object:
+        if path == "/api/control/authorize":
+            return {"allowed": False, "reason": "Delegation is disabled in this direct chat"}
+        raise AssertionError(f"must not reach {method} {path}")
+
+    monkeypatch.setattr(control_mcp, "_http", fake_http)
+    with pytest.raises(RuntimeError, match="Delegation is disabled"):
+        _call_tool(
+            "http://127.0.0.1:8765",
+            "sodms-reviewer",
+            "create_team_plan",
+            {"name": "rogue", "nodes": [{"id": "n1", "bot_name": "chief", "prompt": "x"}]},
+        )

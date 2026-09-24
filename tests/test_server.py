@@ -32,6 +32,10 @@ class FakeEngine:
         self.runs: dict[str, FakeRun] = {}
         self.decisions: list[tuple[str, str, str]] = []
         self.cancelled: list[str] = []
+        self.active_snapshots: dict[str, dict[str, Any]] = {}
+
+    def active_run_for(self, bot_name: str) -> dict[str, Any] | None:
+        return self.active_snapshots.get(bot_name)
 
     async def start(self) -> None:
         self.started = True
@@ -488,6 +492,73 @@ def test_roster_events_publish_on_bot_and_group_mutations(tmp_path: Path) -> Non
             "action": "deleted",
             "name": "builder",
         }
+
+
+def test_control_authorize_gates_bot_delegation(tmp_path: Path) -> None:
+    engine = FakeEngine()
+    app = create_app(Store(tmp_path / "store"), engine)
+    with _test_client(app) as client:
+        assert client.post(
+            "/api/bots", json={"name": "sherpa", "cwd": str(tmp_path)}
+        ).status_code == 201
+        assert client.post(
+            "/api/bots", json={"name": "nick", "cwd": str(tmp_path)}
+        ).status_code == 201
+
+        # No active run to attribute the call to: fail closed.
+        denied = client.post(
+            "/api/control/authorize", json={"caller": "sherpa", "tool": "call_bot"}
+        )
+        assert denied.status_code == 200
+        assert denied.json()["allowed"] is False
+
+        # Direct turn, plain work request: denied.
+        engine.active_snapshots["sherpa"] = {
+            "actor": "api",
+            "message": "review these export files",
+        }
+        denied = client.post(
+            "/api/control/authorize", json={"caller": "sherpa", "tool": "create_team_plan"}
+        )
+        assert denied.json()["allowed"] is False
+        assert "direct chat" in denied.json()["reason"]
+
+        # Direct turn, explicit @-tag ask: allowed.
+        engine.active_snapshots["sherpa"] = {
+            "actor": "api",
+            "message": "@nick take the second half of this review",
+        }
+        allowed = client.post(
+            "/api/control/authorize", json={"caller": "sherpa", "tool": "call_bot"}
+        )
+        assert allowed.json() == {"allowed": True, "reason": ""}
+
+        # Group round: always allowed.
+        engine.active_snapshots["sherpa"] = {"actor": "group", "message": "review this"}
+        allowed = client.post(
+            "/api/control/authorize", json={"caller": "sherpa", "tool": "create_team_plan"}
+        )
+        assert allowed.json()["allowed"] is True
+
+        # Group round administering the fleet still needs an explicit ask.
+        denied = client.post(
+            "/api/control/authorize", json={"caller": "sherpa", "tool": "create_bot"}
+        )
+        assert denied.json()["allowed"] is False
+        engine.active_snapshots["sherpa"] = {
+            "actor": "group",
+            "message": "create a bot for nightly tests",
+        }
+        allowed = client.post(
+            "/api/control/authorize", json={"caller": "sherpa", "tool": "create_bot"}
+        )
+        assert allowed.json()["allowed"] is True
+
+        # Read-only inspection tools are never gated.
+        allowed = client.post(
+            "/api/control/authorize", json={"caller": "sherpa", "tool": "list_bots"}
+        )
+        assert allowed.json()["allowed"] is True
 
 
 def test_policy_routine_plugin_and_audit_routes(tmp_path: Path) -> None:

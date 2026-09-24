@@ -251,12 +251,12 @@ def parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
-    parser().parse_args()
+    caller = parser().parse_args().caller.strip()
     base_url = _validated_base_url(os.environ.get("KYN_CONTROL_URL", "http://127.0.0.1:8765"))
     for line in sys.stdin:
         try:
             message = json.loads(line)
-            response = _dispatch(message, base_url)
+            response = _dispatch(message, base_url, caller)
         except Exception as exc:
             request_id = message.get("id") if isinstance(locals().get("message"), dict) else None
             response = _error(request_id, -32603, f"fleet tool failed: {type(exc).__name__}: {exc}")
@@ -265,7 +265,7 @@ def main() -> None:
             sys.stdout.flush()
 
 
-def _dispatch(message: Mapping[str, Any], base_url: str) -> dict[str, Any] | None:
+def _dispatch(message: Mapping[str, Any], base_url: str, caller: str) -> dict[str, Any] | None:
     request_id = message.get("id")
     method = str(message.get("method") or "")
     if method.startswith("notifications/"):
@@ -289,20 +289,34 @@ def _dispatch(message: Mapping[str, Any], base_url: str) -> dict[str, Any] | Non
     name = str(params.get("name") or "")
     arguments = params.get("arguments") if isinstance(params.get("arguments"), Mapping) else {}
     try:
-        value = _call_tool(base_url, name, dict(arguments))
+        value = _call_tool(base_url, caller, name, dict(arguments))
     except Exception as exc:
         return _result(request_id, {"content": [{"type": "text", "text": f"{type(exc).__name__}: {exc}"}], "isError": True})
     text = json.dumps(value, ensure_ascii=False, indent=2)
     return _result(request_id, {"content": [{"type": "text", "text": text}], "structuredContent": value, "isError": False})
 
 
-def _call_tool(base: str, name: str, args: dict[str, Any]) -> Any:
+def _authorize(base_url: str, caller: str, tool: str) -> None:
+    """Enforce the hard delegation guardrail before a fleet admin tool runs."""
+    try:
+        verdict = _http(
+            base_url, "POST", "/api/control/authorize", {"caller": caller, "tool": tool}
+        )
+    except Exception as exc:
+        raise RuntimeError(f"delegation guardrail unreachable: {exc}") from exc
+    if not isinstance(verdict, dict) or not verdict.get("allowed"):
+        reason = str((verdict or {}).get("reason") or "delegation denied")
+        raise RuntimeError(reason)
+
+
+def _call_tool(base: str, caller: str, name: str, args: dict[str, Any]) -> Any:
     if name == "fleet_status":
         bots = _http(base, "GET", "/api/bots")
         runs = _runs_snapshot(base)
         interactions = _http(base, "GET", "/api/interactions?status=pending")
         return {"bots": bots, "runs": runs, "pending_approvals": interactions}
     if name == "create_bot":
+        _authorize(base, caller, name)
         payload = {
             "name": _req(args, "name"),
             "cwd": _req(args, "cwd"),
@@ -319,12 +333,16 @@ def _call_tool(base: str, name: str, args: dict[str, Any]) -> Any:
             if key in args and args[key] is not None:
                 changes[key] = str(args[key])
         if not changes:
+            # Field-less call is a read — reads are never gated.
             return _http(base, "GET", f"/api/bots/{bot_name}")
+        _authorize(base, caller, name)
         return _http(base, "PATCH", f"/api/bots/{bot_name}", changes)
     if name == "delete_bot":
+        _authorize(base, caller, name)
         target = _quote(args, "name")
         return _http(base, "DELETE", f"/api/bots/{target}")
     if name == "set_bot_policy":
+        _authorize(base, caller, name)
         bot_name = _quote(args, "name")
         current = _http(base, "GET", f"/api/bots/{bot_name}/policy")
         if isinstance(current, list):
@@ -341,6 +359,7 @@ def _call_tool(base: str, name: str, args: dict[str, Any]) -> Any:
         }
         return _http(base, "PUT", f"/api/bots/{bot_name}/policy", payload)
     if name == "create_routine":
+        _authorize(base, caller, name)
         payload = {
             "name": _req(args, "name"),
             "bot_name": _req(args, "bot_name"),
@@ -354,6 +373,7 @@ def _call_tool(base: str, name: str, args: dict[str, Any]) -> Any:
             payload["run_at"] = str(args["run_at"])
         return _http(base, "POST", "/api/routines", payload)
     if name == "update_routine":
+        _authorize(base, caller, name)
         routine_id = _quote(args, "routine_id")
         changes = {
             key: args[key]
@@ -364,8 +384,10 @@ def _call_tool(base: str, name: str, args: dict[str, Any]) -> Any:
             raise ValueError("pass at least one field to change")
         return _http(base, "PATCH", f"/api/routines/{routine_id}", changes)
     if name == "delete_routine":
+        _authorize(base, caller, name)
         return _http(base, "DELETE", f"/api/routines/{_quote(args, 'routine_id')}")
     if name == "bind_plugin":
+        _authorize(base, caller, name)
         payload = {
             "enabled": bool(args.get("enabled", True)),
             "allow_tools": list(args.get("allow_tools") or ["*"]),
@@ -375,6 +397,7 @@ def _call_tool(base: str, name: str, args: dict[str, Any]) -> Any:
         plugin_id = _quote(args, "plugin_id")
         return _http(base, "PUT", f"/api/bots/{bot_name}/plugins/{plugin_id}", payload)
     if name == "unbind_plugin":
+        _authorize(base, caller, name)
         bot_name = _quote(args, "bot_name")
         plugin_id = _quote(args, "plugin_id")
         return _http(base, "DELETE", f"/api/bots/{bot_name}/plugins/{plugin_id}")
@@ -382,6 +405,7 @@ def _call_tool(base: str, name: str, args: dict[str, Any]) -> Any:
         engine = _quote(args, "engine")
         return _http(base, "GET", f"/api/engines/{engine}/models")
     if name == "run_command":
+        _authorize(base, caller, name)
         return _run_command(args)
     if name == "fleet_audit":
         limit = min(max(int(args.get("limit") or 20), 1), 100)

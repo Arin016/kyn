@@ -41,6 +41,7 @@ def test_fleet_mcp_advertises_admin_tools() -> None:
     listed = _dispatch(
         {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
         "http://127.0.0.1:8765",
+        "chief",
     )
     assert listed is not None
     names = {item["name"] for item in listed["result"]["tools"]}  # type: ignore[index]
@@ -74,6 +75,8 @@ def test_fleet_configure_bot_patches_only_given_fields(monkeypatch) -> None:
 
     def fake_http(base: str, method: str, path: str, payload: object = None) -> object:
         calls.append((method, path))
+        if path == "/api/control/authorize":
+            return {"allowed": True, "reason": ""}
         if path == "/api/bots/builder" and method == "GET":
             return {"name": "builder", "model": "old-model"}
         return {"ok": True}
@@ -81,11 +84,28 @@ def test_fleet_configure_bot_patches_only_given_fields(monkeypatch) -> None:
     monkeypatch.setattr("kyn.fleet_mcp._http", fake_http)
     result = _call_tool(
         "http://127.0.0.1:8765",
+        "chief",
         "configure_bot",
         {"name": "builder", "model": "new-model"},
     )
     assert result == {"ok": True}
-    assert calls == [("PATCH", "/api/bots/builder")]
+    assert calls == [("POST", "/api/control/authorize"), ("PATCH", "/api/bots/builder")]
+
+
+def test_fleet_mutating_tool_denied_without_explicit_ask(monkeypatch) -> None:
+    def fake_http(base: str, method: str, path: str, payload: object = None) -> object:
+        if path == "/api/control/authorize":
+            return {"allowed": False, "reason": "Delegation is disabled in this direct chat"}
+        raise AssertionError(f"must not reach {method} {path}")
+
+    monkeypatch.setattr("kyn.fleet_mcp._http", fake_http)
+    with pytest.raises(RuntimeError, match="Delegation is disabled"):
+        _call_tool(
+            "http://127.0.0.1:8765",
+            "sherpa",
+            "create_bot",
+            {"name": "rogue", "cwd": "/tmp"},
+        )
 
 
 def test_fleet_configure_bot_with_no_fields_reads(monkeypatch) -> None:
@@ -96,7 +116,7 @@ def test_fleet_configure_bot_with_no_fields_reads(monkeypatch) -> None:
         return {"name": "builder", "model": "m"}
 
     monkeypatch.setattr("kyn.fleet_mcp._http", fake_http)
-    result = _call_tool("http://127.0.0.1:8765", "configure_bot", {"name": "builder"})
+    result = _call_tool("http://127.0.0.1:8765", "chief", "configure_bot", {"name": "builder"})
     assert result["name"] == "builder"
     assert calls == [("GET", "/api/bots/builder")]
 
@@ -105,6 +125,8 @@ def test_fleet_set_bot_policy_merges_with_current(monkeypatch) -> None:
     sent: dict[str, object] = {}
 
     def fake_http(base: str, method: str, path: str, payload: object = None) -> object:
+        if path == "/api/control/authorize":
+            return {"allowed": True, "reason": ""}
         if path == "/api/bots/builder/policy":
             if method == "GET":
                 return {
@@ -124,6 +146,7 @@ def test_fleet_set_bot_policy_merges_with_current(monkeypatch) -> None:
     monkeypatch.setattr("kyn.fleet_mcp._http", fake_http)
     _call_tool(
         "http://127.0.0.1:8765",
+        "chief",
         "set_bot_policy",
         {"name": "builder", "denied_tools": ["shell.exec"]},
     )
@@ -167,6 +190,8 @@ def test_first_boot_provisions_chief(store: Store, plugins: PluginRegistry) -> N
     _generation, servers = plugins.compile_session_configuration(CHIEF_NAME, environ={})
     names = {item["name"] for item in servers}
     assert {CONTROL_PLUGIN_ID, FLEET_PLUGIN_ID} <= names
+    fleet_server = next(item for item in servers if item["name"] == FLEET_PLUGIN_ID)
+    assert fleet_server["args"][-2:] == ["--caller", CHIEF_NAME]
 
 
 def test_chief_is_not_recreated_after_operator_deletes_it(

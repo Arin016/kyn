@@ -701,6 +701,9 @@ class Engine:
             run.message,
             bot_names=bot_names,
             memory_context=context,
+            # Only group-chat rounds may coordinate freely; every other surface
+            # is a direct turn where unprompted delegation is forbidden.
+            group_turn=run.actor == "group",
         )
 
     async def _restore_all_queued(self) -> None:
@@ -972,6 +975,27 @@ class Engine:
         if durable is not None and durable.status in _TERMINAL_STATUSES:
             return _durable_snapshot(durable)
         raise RunNotFound(run_id)
+
+    def active_run_for(self, bot_name: str) -> dict[str, Any] | None:
+        """Newest in-flight run snapshot for a bot, if the engine holds one.
+
+        The delegation guard uses this to attribute a bot-initiated tool call
+        to the turn it runs inside (surface + original request). An executing
+        run always wins over a merely queued one: only the executing turn can
+        be making tool calls, so attributing to a queued newcomer would apply
+        the wrong surface. Returns None when the bot has nothing in flight —
+        which also fails closed.
+        """
+        wanted = str(bot_name or "")
+        fallback: dict[str, Any] | None = None
+        for run in reversed(list(self._runs.values())):
+            if run.bot_name != wanted or run.terminal:
+                continue
+            snapshot = run.snapshot()
+            if run.status in ("running", "waiting_permission"):
+                return snapshot
+            fallback = snapshot
+        return fallback
 
     async def get_workspace_lease(self, run_id: str) -> WorkspaceLease:
         """Return a trusted lease for a harness coordinating multiple turns."""

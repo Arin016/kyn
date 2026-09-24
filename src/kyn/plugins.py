@@ -475,6 +475,10 @@ class PluginRegistry:
                 )
                 if plugin.id == "kiro-control":
                     server["args"].extend(["--caller", bot_name])
+                elif plugin.id == "kyn-fleet":
+                    # Fleet admin tools are gated per caller: without this the
+                    # subprocess cannot attribute (or authorize) its actions.
+                    server["args"].extend(["--caller", bot_name])
             else:
                 server.update({"type": "http", "url": plugin.url})
 

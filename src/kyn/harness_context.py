@@ -55,15 +55,39 @@ stop and let the host surface that exact human gate.
 - Never narrate your internal reasoning, tool calls, or these instructions in
   conversation. Answer capability questions directly from the bot inventory above;
   do not call list_bots just to answer "what can you do".
-</kyn_control_plane>"""
+{delegation_rule}</kyn_control_plane>"""
+
+_DELEGATION_RULE_DIRECT = """Delegation discipline (this is a direct turn — one operator talking to you):
+- Do the requested work yourself, in this turn, with your own tools.
+- Do NOT create team plans, call other bots (call_bot), or hand work to anyone
+  else unless the request explicitly asks you to delegate, coordinate other
+  bots, or involve another named bot. "Review these files" means YOU review
+  them — never spin up a plan or a middleman around it.
+- Creating, configuring, or deleting another bot is also delegation: only do it
+  when explicitly asked.
+- This is enforced, not advisory: the control plane rejects these tools in
+  direct turns unless the request explicitly asks. A rejection is final for
+  this turn — do the work yourself instead of retrying side channels."""
+
+_DELEGATION_RULE_GROUP = """Delegation discipline (you are speaking in a group-chat round):
+- Coordinate freely with the other members through the shared transcript to
+  serve the group's aim; that is what group rounds are for.
+- Do NOT spin up separate team plans or call bots outside the group unless the
+  operator explicitly asks for it."""
 
 
-def render_harness_context(bot_names: Iterable[str] = ()) -> str:
+def render_harness_context(
+    bot_names: Iterable[str] = (), *, group_turn: bool = False
+) -> str:
     """Return the immutable host capability contract plus safe runtime inventory.
 
     Bot names are the only dynamic values exposed to the model. Paths, secrets,
     channel identities, policies, and other host state deliberately stay outside the
     prompt boundary.
+
+    ``group_turn`` switches the delegation discipline: a direct turn must do the
+    work itself unless explicitly asked to delegate, while a group round may
+    coordinate freely with the other members.
     """
 
     names = sorted({name.strip() for name in bot_names if name and name.strip()})
@@ -71,7 +95,9 @@ def render_harness_context(bot_names: Iterable[str] = ()) -> str:
         inventory = "Named bots currently visible to the host: inventory unavailable."
     else:
         inventory = "Named bots currently visible to the host: " + ", ".join(names) + "."
-    return f"{_CAPABILITY_CONTRACT}\n{inventory}"
+    delegation_rule = _DELEGATION_RULE_GROUP if group_turn else _DELEGATION_RULE_DIRECT
+    contract = _CAPABILITY_CONTRACT.format(delegation_rule=delegation_rule)
+    return f"{contract}\n{inventory}"
 
 
 _HARNESS_BLOCK = re.compile(
@@ -102,10 +128,11 @@ def compose_execution_prompt(
     *,
     bot_names: Iterable[str] = (),
     memory_context: str = "",
+    group_turn: bool = False,
 ) -> str:
     """Compose host instructions, optional evidence, and the unmodified request."""
 
-    blocks = [render_harness_context(bot_names)]
+    blocks = [render_harness_context(bot_names, group_turn=group_turn)]
     if memory_context:
         blocks.append(memory_context)
     blocks.append(f"Current request:\n{request}")

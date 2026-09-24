@@ -50,6 +50,8 @@ from .coding_lifecycle import (
     CodingLifecycleError,
 )
 from .live import LiveBus
+from .delegation_guard import GATED_TOOLS as DELEGATION_GATED_TOOLS
+from .delegation_guard import authorize as authorize_delegation_tool
 from .remote import authorize_websocket, install_remote_guard
 from .channels import (
     ChannelAuthenticationError,
@@ -102,6 +104,10 @@ if FastAPI is not None:
 
     class TurnBody(BaseModel):
         message: str = Field(min_length=1)
+
+    class AuthorizeBody(BaseModel):
+        caller: str = Field(min_length=1, max_length=128)
+        tool: str = Field(min_length=1, max_length=128)
 
     class UpdateBotBody(BaseModel):
         model: str | None = None
@@ -933,6 +939,50 @@ def create_app(
             raise RuntimeError("engine.submit returned no run identifier")
         return {"run_id": run_id}
 
+    @app.post("/api/control/authorize")
+    async def authorize_control_tool(body: AuthorizeBody) -> dict[str, Any]:
+        """Hard delegation guardrail for bot-initiated coordination tools.
+
+        The kiro-control and kyn-fleet MCP servers call this before executing
+        any coordination-class tool (team plans, bot-to-bot calls, fleet admin).
+        Humans (UI, CLI, API) never pass through here and are never gated.
+
+        Fail-closed: an unattributable call (no active run for the caller) is
+        denied, because an unscoped delegation can never be proven explicit.
+        """
+        caller = body.caller.strip()
+        tool = body.tool.strip()
+        if tool not in DELEGATION_GATED_TOOLS:
+            return {"allowed": True, "reason": ""}
+        bot_names = [bot.name for bot in active_store.list_bots()]
+        lookup = getattr(active_engine, "active_run_for", None)
+        snapshot = lookup(caller) if callable(lookup) else None
+        if not isinstance(snapshot, dict):
+            _logger.warning("Delegation denied for %r: no active run", caller)
+            return {
+                "allowed": False,
+                "reason": (
+                    f"No active turn is attributed to {caller!r}, so this "
+                    "delegation cannot be tied to an explicit operator request. "
+                    "Do the work in the current turn instead."
+                ),
+            }
+        allowed, reason = authorize_delegation_tool(
+            caller,
+            tool,
+            actor=str(snapshot.get("actor") or ""),
+            message=str(snapshot.get("message") or ""),
+            bot_names=bot_names,
+            trusted_channel=_channel_senders_allowlisted(
+                active_channels, str(snapshot.get("actor") or "")
+            ),
+        )
+        if not allowed:
+            _logger.warning(
+                "Delegation denied for %r: %s(%s)", caller, tool, snapshot.get("actor")
+            )
+        return {"allowed": allowed, "reason": reason}
+
     @app.get("/api/runs/{run_id}")
     async def get_run(run_id: str, after: int = Query(default=0, ge=0)) -> dict[str, Any]:
         run = await _require_run(active_engine, run_id)
@@ -1701,6 +1751,25 @@ def _require_bot(store: Store, name: str) -> Bot:
     if bot is None:
         raise HTTPException(status_code=404, detail=f"bot {name!r} was not found")
     return bot
+
+
+def _channel_senders_allowlisted(channels: Any, actor: str) -> bool:
+    """Is this channel turn's text operator intent?
+
+    Only a channel binding with a non-empty sender allowlist (personal
+    devices) counts: anything else is multi-party, and a stranger's signed
+    event must never authorize fleet administration.
+    """
+    if not actor.startswith("channel:"):
+        return False
+    parts = actor.split(":", 2)
+    if len(parts) != 3:
+        return False
+    try:
+        binding = channels.get_binding(parts[2])
+    except Exception:
+        return False
+    return bool(binding is not None and binding.allowed_senders)
 
 
 async def _get_run(engine: Any, run_id: str) -> Any:

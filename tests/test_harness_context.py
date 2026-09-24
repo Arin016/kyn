@@ -61,3 +61,30 @@ def test_display_prompt_unwraps_channel_threads() -> None:
 def test_display_prompt_is_safe_for_plain_text() -> None:
     assert display_prompt("  just a message  ") == "just a message"
     assert display_prompt("") == ""
+
+
+def test_direct_turn_forbids_unprompted_delegation() -> None:
+    rendered = render_harness_context(["reviewer"])
+
+    assert "Delegation discipline (this is a direct turn" in rendered
+    assert "Do NOT create team plans" in rendered
+    assert "unless the request explicitly asks you to delegate" in rendered
+
+
+def test_group_turn_may_coordinate_freely() -> None:
+    rendered = render_harness_context(["reviewer"], group_turn=True)
+
+    assert "you are speaking in a group-chat round" in rendered
+    assert "Coordinate freely with the other members" in rendered
+    assert "Do NOT create team plans" not in rendered
+
+
+def test_execution_prompt_threads_group_turn() -> None:
+    direct = compose_execution_prompt("Review these files", bot_names=["reviewer"])
+    grouped = compose_execution_prompt(
+        "Review these files", bot_names=["reviewer"], group_turn=True
+    )
+
+    assert "this is a direct turn" in direct
+    assert "group-chat round" in grouped
+    assert "group-chat round" not in direct
