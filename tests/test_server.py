@@ -602,6 +602,53 @@ def test_turn_retry_and_fork(tmp_path: Path) -> None:
         assert client.post("/api/bots/nick/turns/999999/fork", json={"to_bot": "sherpa"}).status_code == 404
 
 
+def test_tasks_create_list_merge_guards_and_abandon(tmp_path: Path) -> None:
+    import subprocess
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "app.py").write_text("x = 1\n")
+    subprocess.run(["git", "-C", str(repo), "init", "-b", "main"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(repo), "config", "user.email", "t@e.invalid"], check=True)
+    subprocess.run(["git", "-C", str(repo), "config", "user.name", "t"], check=True)
+    subprocess.run(["git", "-C", str(repo), "add", "app.py"], check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-m", "init"], check=True, capture_output=True)
+
+    engine = FakeEngine()
+    app = create_app(Store(tmp_path / "store"), engine)
+    payload = {
+        "builder_bot": "sherpa",
+        "reviewer_bot": "nick",
+        "repo_path": str(repo),
+        "task": "Add a comment",
+        "checks": [{"name": "true", "argv": ["true"]}],
+    }
+    with _test_client(app) as client:
+        assert client.post("/api/bots", json={"name": "sherpa", "cwd": str(tmp_path)}).status_code == 201
+        assert client.post("/api/bots", json={"name": "nick", "cwd": str(tmp_path)}).status_code == 201
+        created = client.post("/api/tasks", json=payload)
+        assert created.status_code == 202, created.text
+        task = created.json()
+        assert task["branch"].startswith("kyn/task-")
+        assert task["base"] == "main"
+        assert task["task_status"] == "open"
+        execution_id = task["id"]
+
+        listed = client.get("/api/tasks").json()
+        assert [item["id"] for item in listed] == [execution_id]
+
+        # Unreviewed work never merges.
+        merge = client.post(f"/api/tasks/{execution_id}/merge", json={})
+        assert merge.status_code == 409
+
+        abandoned = client.post(f"/api/tasks/{execution_id}/abandon", json={})
+        assert abandoned.status_code == 200
+        assert abandoned.json()["abandoned"] is True
+        detail = client.get(f"/api/tasks/{execution_id}").json()
+        assert detail["task_status"] == "abandoned"
+        assert client.get("/api/tasks/does-not-exist").status_code == 404
+
+
 def test_policy_routine_plugin_and_audit_routes(tmp_path: Path) -> None:
     engine = FakeEngine()
     app = create_app(Store(tmp_path / "store"), engine)

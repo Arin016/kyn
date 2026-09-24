@@ -13,6 +13,7 @@ import json
 import logging
 import re
 import asyncio
+import uuid
 from contextlib import asynccontextmanager
 from dataclasses import asdict, is_dataclass
 from datetime import date, datetime
@@ -51,6 +52,13 @@ from .coding_lifecycle import (
     CodingLifecycleError,
 )
 from .live import LiveBus
+from .tasks import TaskStore
+from .tasks import TaskConflict, TaskError
+from .tasks import commit_worktree, create_task_branch
+from .tasks import delete_task_branch, derive_task_state
+from .tasks import merge_marker, merge_task_branch, push_to_branch
+from .tasks import remove_worktree, resolve_base, resolve_commit
+from .tasks import worktree_diff, worktree_is_clean
 from .delegation_guard import GATED_TOOLS as DELEGATION_GATED_TOOLS
 from .delegation_guard import authorize as authorize_delegation_tool
 from .remote import authorize_websocket, install_remote_guard
@@ -251,6 +259,21 @@ if FastAPI is not None:
         expected_version: int = Field(ge=1)
 
 
+    class CreateTaskBody(BaseModel):
+        builder_bot: str = Field(min_length=1, max_length=100)
+        reviewer_bot: str = Field(min_length=1, max_length=100)
+        repo_path: str = Field(min_length=1)
+        task: str = Field(min_length=1, max_length=100_000)
+        base: str = Field(default="HEAD", min_length=1, max_length=256)
+        checks: list[CodingCheckBody] = Field(min_length=1, max_length=20)
+        max_repairs: int = Field(default=1, ge=0, le=3)
+        timeout_seconds: float = Field(default=1800, ge=30, le=86_400)
+
+
+    class MergeTaskBody(BaseModel):
+        message: str | None = Field(default=None, max_length=500)
+
+
     class CreateChannelBody(BaseModel):
         id: str = Field(min_length=1, max_length=80)
         name: str = Field(min_length=1, max_length=100)
@@ -342,6 +365,7 @@ def create_app(
         active_interactions,
     )
     active_coding_store = CodingExecutionStore(active_store)
+    active_tasks = TaskStore(active_store)
     active_coding_controller = coding_controller or CodingLifecycleController(
         active_coding_store, active_engine, active_workspaces
     )
@@ -1474,6 +1498,210 @@ def create_app(
             return await active_coding_controller.cancel(execution_id)
         except CodingExecutionNotFound as exc:
             raise HTTPException(status_code=404, detail="coding execution was not found") from exc
+
+    def _task_view(execution: dict[str, Any], task: dict[str, Any]) -> dict[str, Any]:
+        spec = execution.get("spec") or {}
+        repo = str(task.get("repo_path") or "")
+        branch = str(task.get("branch") or "")
+        state = derive_task_state(repo, branch, str(execution.get("id") or ""))
+        return {
+            "id": execution.get("id"),
+            "status": execution.get("status"),
+            "task_status": state,
+            "version": execution.get("version"),
+            "builder_bot": spec.get("builder_bot"),
+            "reviewer_bot": spec.get("reviewer_bot"),
+            "repo_path": repo,
+            "branch": branch,
+            "base": task.get("base"),
+            "task": spec.get("task"),
+            "error": execution.get("error"),
+            "created_at": task.get("created_at"),
+            "updated_at": execution.get("updated_at"),
+            "finished_at": execution.get("finished_at"),
+        }
+
+    async def _require_task(execution_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
+        try:
+            execution = await active_coding_controller.get(execution_id)
+        except CodingExecutionNotFound as exc:
+            raise HTTPException(status_code=404, detail="task was not found") from exc
+        task = await asyncio.to_thread(active_tasks.get_task, execution_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail="task was not found")
+        return execution, task
+
+    @app.post("/api/tasks", status_code=202)
+    async def create_task(body: CreateTaskBody) -> dict[str, Any]:
+        """Start a reviewable task: branch + isolated build + review gates.
+
+        Pins ``base`` to a commit, creates ``kyn/task-<key>`` there, then runs
+        the standard coding lifecycle detached at the branch tip (deterministic
+        — the branch cannot move under the run). Nothing merges without review.
+        """
+        _require_bot(active_store, body.builder_bot)
+        _require_bot(active_store, body.reviewer_bot)
+        key = uuid.uuid4().hex[:12]
+        branch = f"kyn/task-{key}"
+        try:
+            repo = str(_validate_working_directory(body.repo_path))
+            base = await asyncio.to_thread(resolve_base, repo, body.base)
+            base_commit = await asyncio.to_thread(resolve_commit, repo, base)
+            await asyncio.to_thread(create_task_branch, repo, branch, base_commit)
+            spec = CodingExecutionSpec(
+                repo_path=repo,
+                ref=branch,
+                task=body.task,
+                builder_bot=body.builder_bot,
+                reviewer_bot=body.reviewer_bot,
+                checks=tuple(
+                    CheckSpec(check.name, tuple(check.argv), check.timeout_seconds)
+                    for check in body.checks
+                ),
+                max_repairs=body.max_repairs,
+                timeout_seconds=body.timeout_seconds,
+            )
+        except (TypeError, ValueError, TaskError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        try:
+            snapshot = await active_coding_controller.submit(
+                spec, idempotency_key=f"task-{key}"
+            )
+        except CodingExecutionConflict as exc:
+            await asyncio.to_thread(delete_task_branch, repo, branch, force=True)
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except (TypeError, ValueError, CodingLifecycleError) as exc:
+            await asyncio.to_thread(delete_task_branch, repo, branch, force=True)
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        adopted = str(snapshot.get("id") or "")
+        if not adopted:
+            await asyncio.to_thread(delete_task_branch, repo, branch, force=True)
+            raise RuntimeError("coding controller returned no execution identifier")
+        task = await asyncio.to_thread(active_tasks.add_task, adopted, repo, branch, base)
+        execution = await active_coding_controller.get(adopted)
+        return _json_safe(_task_view(execution, task))
+
+    @app.get("/api/tasks")
+    async def list_tasks() -> list[dict[str, Any]]:
+        rows = await asyncio.to_thread(active_tasks.list_tasks)
+        views: list[dict[str, Any]] = []
+        for row in rows:
+            try:
+                execution = await active_coding_controller.get(str(row["execution_id"]))
+            except CodingExecutionNotFound:
+                continue
+            views.append(_task_view(execution, row))
+        return _json_safe(views)
+
+    @app.get("/api/tasks/{execution_id}")
+    async def get_task(execution_id: str) -> dict[str, Any]:
+        execution, task = await _require_task(execution_id)
+        view = _task_view(execution, task)
+        worktree = await _task_worktree(execution_id)
+        view["worktree_path"] = worktree
+        if worktree is None:
+            view["files"] = []
+        else:
+            try:
+                view["files"] = list((await asyncio.to_thread(worktree_diff, worktree)).files)
+            except TaskError:
+                view["files"] = []
+        return _json_safe(view)
+
+    @app.get("/api/tasks/{execution_id}/diff")
+    async def task_diff(execution_id: str) -> dict[str, Any]:
+        execution, task = await _require_task(execution_id)
+        worktree = await _task_worktree(execution_id)
+        if worktree is None:
+            raise HTTPException(status_code=404, detail="task worktree is gone")
+        try:
+            diff = await asyncio.to_thread(worktree_diff, worktree)
+        except TaskError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return _json_safe(
+            {
+                "id": execution_id,
+                "branch": task.get("branch"),
+                "base": task.get("base"),
+                "files": list(diff.files),
+                "diff": diff.diff,
+                "truncated": diff.truncated,
+            }
+        )
+
+    @app.post("/api/tasks/{execution_id}/merge")
+    async def merge_task(execution_id: str, body: MergeTaskBody) -> dict[str, Any]:
+        """Merge reviewed task work into its base branch.
+
+        Only reviewed work merges (execution ``awaiting_handoff``/``ready``).
+        Commits the worktree, pushes ``HEAD:<branch>``, ``--no-ff`` merges
+        into a clean checked-out base, then deletes the branch. Conflicts
+        abort cleanly with a 409 listing the files.
+        """
+        execution, task = await _require_task(execution_id)
+        if str(execution.get("status") or "") not in {"awaiting_handoff", "ready"}:
+            raise HTTPException(
+                status_code=409,
+                detail="only reviewed work merges — approve the handoff first",
+            )
+        repo = str(task.get("repo_path") or "")
+        branch = str(task.get("branch") or "")
+        base = str(task.get("base") or "")
+        worktree = await _task_worktree(execution_id)
+        if worktree is None:
+            raise HTTPException(status_code=404, detail="task worktree is gone")
+        spec = execution.get("spec") or {}
+        first_line = str(spec.get("task") or "").strip().splitlines()
+        summary = first_line[0][:80] if first_line else "task work"
+        marker = merge_marker(execution_id)
+        try:
+            committed = await asyncio.to_thread(
+                commit_worktree, worktree, f"kyn task {execution_id}: {summary}"
+            )
+            if not committed:
+                # Nothing changed in the worktree: is there anything to merge?
+                # Compare branch tip against base tip.
+                raise HTTPException(status_code=422, detail="no changes to merge")
+            await asyncio.to_thread(push_to_branch, worktree, repo, branch)
+            message = body.message.strip() if body.message else f"Merge {branch} ({marker}): {summary}"
+            result = await asyncio.to_thread(
+                merge_task_branch, repo, branch, base, f"{message}\n\n{marker}"
+            )
+        except HTTPException:
+            raise
+        except TaskConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except TaskError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return _json_safe({"id": execution_id, "merged": True, **result})
+
+    @app.post("/api/tasks/{execution_id}/abandon")
+    async def abandon_task(execution_id: str) -> dict[str, Any]:
+        """Abandon a task: cancel the run, force-remove the worktree, delete the branch."""
+        execution, task = await _require_task(execution_id)
+        repo = str(task.get("repo_path") or "")
+        branch = str(task.get("branch") or "")
+        try:
+            await active_coding_controller.cancel(execution_id)
+        except (CodingExecutionNotFound, CodingLifecycleError):
+            pass
+        worktree = await _task_worktree(execution_id)
+        if worktree is not None:
+            try:
+                await asyncio.to_thread(remove_worktree, worktree, force=True)
+            except TaskError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+        try:
+            await asyncio.to_thread(delete_task_branch, repo, branch, force=True)
+        except TaskError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return _json_safe({"id": execution_id, "abandoned": True})
+
+    async def _task_worktree(execution_id: str) -> str | None:
+        manifest = await asyncio.to_thread(active_workspaces.get_manifest, execution_id)
+        if manifest is None:
+            return None
+        return str(manifest.worktree_path or "") or None
 
     @app.get("/api/channels")
     async def list_channels(bot_name: str | None = None) -> list[dict[str, Any]]:
