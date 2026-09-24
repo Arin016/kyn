@@ -48,6 +48,10 @@ _TERMINAL_STATUSES = frozenset({"complete", "failed", "cancelled"})
 _WORKER_STOP = object()
 _DURABLE_LEASE_SECONDS = 300
 _DURABLE_HEARTBEAT_SECONDS = 60
+# Hard cap on failover retries per run. The chain is policy-ordered and
+# already tracked in failover_engines, but the cap bounds cost if a policy
+# lists many engines that all fail.
+_MAX_FAILOVER_ATTEMPTS = 3
 _WORKSPACE_HEARTBEAT_SECONDS = 60
 _logger = logging.getLogger(__name__)
 
@@ -112,6 +116,7 @@ class _RunState:
     finishing: bool = False
     failover_attempts: int = 0
     failover_engines: tuple[str, ...] = ()
+    failover_context: str = ""
     workspace_execution: WorkspaceExecution | None = None
     workspace_manifest: dict[str, Any] | None = None
 
@@ -329,6 +334,12 @@ class BotWorker:
             self._refresh_orchestrator = False
         orchestrator = await self._ensure_orchestrator(execution_cwd)
         execution_prompt = await self.engine._execution_prompt(run)
+        if run.failover_context:
+            # A failover retry opens a brand-new session on the fallback
+            # engine; without this, it loses everything the failed attempt
+            # did. Prepend a handoff bundle, then consume it.
+            execution_prompt = f"{run.failover_context}\n\n{execution_prompt}"
+            run.failover_context = ""
         async for event in orchestrator.run(execution_prompt):
             if event.kind == "permission":
                 await self.engine._apply_permission_policy(run, event, self)
@@ -551,6 +562,13 @@ class Engine:
         cause = classify_provider_failure(error)
         if cause is None or self._governance is None or self._store is None:
             return False
+        if run.failover_attempts >= _MAX_FAILOVER_ATTEMPTS:
+            _logger.warning(
+                "Run %s hit the failover attempt cap (%d); failing",
+                run.id,
+                run.failover_attempts,
+            )
+            return False
         try:
             policy = await asyncio.to_thread(self._governance.get_policy, run.bot_name)
             bot = await asyncio.to_thread(self._store.get_bot, run.bot_name)
@@ -587,6 +605,49 @@ class Engine:
             run.engine = candidate
             run.failover_engines = tuple((*run.failover_engines, current))
             run.failover_attempts += 1
+            # The fallback opens a brand-new session: stale approval tokens
+            # belong to the dead one and must never be answered there.
+            async with run.condition:
+                run.pending_permissions.clear()
+            if run.durable_lease is not None and self._run_repository is not None:
+                # Persist the chain before retrying: after a daemon restart
+                # the restored run must not retry an engine already attempted.
+                try:
+                    await asyncio.to_thread(
+                        self._run_repository.record_failover,
+                        run.id,
+                        run.durable_lease.token,
+                        failover_attempts=run.failover_attempts,
+                        failover_engines=run.failover_engines,
+                    )
+                except Exception:
+                    _logger.exception(
+                        "Failover state persistence failed for run %s", run.id
+                    )
+                    # The bot row above was already flipped to an engine that
+                    # never proved itself — flip it back rather than stranding
+                    # the bot on an unproven fallback.
+                    try:
+                        await asyncio.to_thread(self._store.put_bot, bot)
+                    except Exception:
+                        _logger.exception(
+                            "Failover engine revert failed for run %s", run.id
+                        )
+                    return False
+            # Hand the retry the failed attempt's work: the fallback engine
+            # starts a fresh session with no memory of what just happened.
+            run.failover_context = _failover_context(run, current, error)
+            await self._append_event(
+                run,
+                Event(
+                    kind="failover",
+                    title="Engine failover",
+                    text=(
+                        f"Engine {current} failed ({cause}). Retrying on "
+                        f"{candidate} with the failed attempt's context."
+                    ),
+                ),
+            )
             async with run.condition:
                 if run.terminal or run.finishing:
                     return False
@@ -813,6 +874,8 @@ class Engine:
             max_events=self._max_events_per_run,
             created_at=durable.created_at,
             actor=durable.actor,
+            failover_attempts=int(getattr(durable, "failover_attempts", 0) or 0),
+            failover_engines=tuple(getattr(durable, "failover_engines", ()) or ()),
         )
         if self._workspaces is not None:
             try:
@@ -1498,6 +1561,45 @@ def _json_safe(value: Any) -> Any:
 
 def _copy_json(value: Any) -> Any:
     return json.loads(json.dumps(value, ensure_ascii=False))
+
+
+def _error_text(exc: Exception) -> str:
+    message = str(exc).strip()
+    return f"{type(exc).__name__}: {message}" if message else type(exc).__name__
+
+
+def _failover_context(run: _RunState, from_engine: str, error: str) -> str:
+    """Compile a handoff bundle for a failover retry.
+
+    The fallback engine starts a fresh session with zero memory of the failed
+    attempt. This bundles what that attempt was asked, what it produced, and
+    why it died so the retry continues instead of starting blind.
+    """
+    steps: list[str] = []
+    for record in list(run.events)[-24:]:
+        kind = str(record.get("kind") or "")
+        text = str(record.get("text") or "").strip()
+        title = str(record.get("title") or "").strip()
+        if kind == "text" or kind == "agent_message_chunk":
+            if text:
+                steps.append(f"- said: {text[:400]}")
+        elif "tool" in kind:
+            steps.append(f"- tool: {title or text[:200] or 'unknown'}")
+        elif kind == "thinking" and text:
+            steps.append(f"- reasoning: {text[:200]}")
+    transcript = "\n".join(steps) if steps else "- (no progress recorded)"
+    return (
+        "<failover_handoff>\n"
+        f"The previous engine ({from_engine}) crashed mid-task. You are the "
+        "retry on a different engine. Continue the task from this state — "
+        "do not redo completed work unless its result is unknown.\n"
+        f"<original_request>{run.message[:2000]}</original_request>\n"
+        "<attempt_transcript>\n"
+        f"{transcript}\n"
+        "</attempt_transcript>\n"
+        f"<failure_reason>{error[:400]}</failure_reason>\n"
+        "</failover_handoff>"
+    )
 
 
 def _error_text(exc: Exception) -> str:

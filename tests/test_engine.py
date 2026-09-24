@@ -53,10 +53,16 @@ class FakeOrchestrator:
         self.session = FakeSession()
         self.closed = False
         self.cwd: str | None = None
+        self.engine = ""
 
     async def open(self, bot_name: str, *, cwd: str | None = None) -> FakeSession:
         self.bot_name = bot_name
         self.cwd = cwd
+        self.engine = ""
+        if self.hub.store is not None:
+            bot = self.hub.store.get_bot(bot_name)
+            if bot is not None:
+                self.engine = bot.engine
         self.hub.instances[bot_name] = self
         self.hub.opens.append((bot_name, cwd))
         return self.session
@@ -107,7 +113,10 @@ class FakeOrchestrator:
             if public_message == "fail":
                 raise RuntimeError("simulated turn failure")
             if public_message == "quota-fail":
-                raise RuntimeError("Rate limit exceeded: free-models-per-day")
+                # Mirror production semantics: the failure is engine-specific,
+                # so a failover retry on another engine can succeed.
+                if self.hub.store is None or self.engine in self.hub.fail_engines:
+                    raise RuntimeError("Rate limit exceeded: free-models-per-day")
             if public_message == "workspace-write":
                 assert self.cwd is not None
                 Path(self.cwd, "artifact.txt").write_text(
@@ -128,6 +137,8 @@ class FakeHub:
         self.starts: list[tuple[str, str]] = []
         self.execution_prompts: list[tuple[str, str]] = []
         self.started: defaultdict[tuple[str, str], asyncio.Event] = defaultdict(asyncio.Event)
+        self.store = None
+        self.fail_engines: set[str] = set()
         self.gates: dict[tuple[str, str], asyncio.Event] = {}
         self.active = 0
         self.max_active = 0
@@ -168,6 +179,8 @@ def test_provider_failure_fails_over_to_configured_engine(tmp_path: Path) -> Non
         hub = FakeHub()
         store = Store(tmp_path / "store")
         store.put_bot(Bot("alpha", str(tmp_path), engine="kiro"))
+        hub.store = store
+        hub.fail_engines = {"kiro"}
         governance = GovernanceStore(store)
         governance.set_policy("alpha", Policy(auto_failover=True, failover_engines=("opencode",)))
         engine = Engine(store=store, governance=governance, orchestrator_factory=hub.factory)
@@ -179,6 +192,11 @@ def test_provider_failure_fails_over_to_configured_engine(tmp_path: Path) -> Non
             assert list(engine._runs) == [first]
             assert store.get_bot("alpha").engine == "opencode"  # type: ignore[union-attr]
             assert [prompt for _, prompt in hub.starts].count("quota-fail") == 2
+            # The retry must carry the failed attempt's context, not start blind.
+            retry_prompt = hub.execution_prompts[-1][1]
+            assert "<failover_handoff>" in retry_prompt
+            assert "quota-fail" in retry_prompt
+            assert "free-models-per-day" in retry_prompt
         finally:
             await engine.close()
 
@@ -190,6 +208,8 @@ def test_failover_does_not_cycle_back_to_an_attempted_engine(tmp_path: Path) -> 
         hub = FakeHub()
         store = Store(tmp_path / "store")
         store.put_bot(Bot("alpha", str(tmp_path), engine="kiro"))
+        hub.store = store
+        hub.fail_engines = {"kiro", "opencode"}
         governance = GovernanceStore(store)
         governance.set_policy(
             "alpha",

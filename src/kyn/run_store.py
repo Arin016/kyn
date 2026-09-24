@@ -11,6 +11,7 @@ idempotent or approval-gated.
 
 from __future__ import annotations
 
+import json
 import secrets
 import sqlite3
 from dataclasses import dataclass
@@ -46,6 +47,11 @@ class DurableRun:
     attempt: int
     lease_owner: str
     lease_expires_at: str | None
+    # Failover chain state. attempt counts worker claims; failover_attempts
+    # counts engine switches, and failover_engines lists every engine already
+    # tried. Persisted so a restart cannot repeat a multi-fallback chain.
+    failover_attempts: int = 0
+    failover_engines: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -265,6 +271,39 @@ class RunRepository:
         assert updated is not None
         return _run_from_row(updated)
 
+    def record_failover(
+        self,
+        run_id: str,
+        token: str,
+        *,
+        failover_attempts: int,
+        failover_engines: tuple[str, ...] = (),
+        now: datetime | None = None,
+    ) -> DurableRun:
+        """Persist an engine failover so a restart cannot repeat the chain."""
+        timestamp = _coerce_utc(now)
+        run = _bounded(run_id, "run_id", 160)
+        lease_token = _bounded(token, "lease token", 256)
+        if not isinstance(failover_attempts, int) or isinstance(failover_attempts, bool):
+            raise TypeError("failover_attempts must be an integer")
+        if failover_attempts < 0:
+            raise ValueError("failover_attempts cannot be negative")
+        engines = tuple(str(engine) for engine in failover_engines)
+        with self.store.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            self._require_active_lease(db, run, lease_token, timestamp)
+            db.execute(
+                """
+                UPDATE durable_runs
+                SET failover_attempts = ?, failover_engines_json = ?, updated_at = ?
+                WHERE run_id = ?
+                """,
+                (failover_attempts, json.dumps(engines), _iso(timestamp), run),
+            )
+            updated = db.execute("SELECT * FROM durable_runs WHERE run_id = ?", (run,)).fetchone()
+        assert updated is not None
+        return _run_from_row(updated)
+
     def requeue_stale(self, now: datetime | None = None) -> int:
         timestamp = _iso(_coerce_utc(now))
         with self.store.connect() as db:
@@ -471,6 +510,8 @@ class RunRepository:
                     started_at TEXT,
                     finished_at TEXT,
                     attempt INTEGER NOT NULL DEFAULT 0 CHECK(attempt >= 0),
+                    failover_attempts INTEGER NOT NULL DEFAULT 0 CHECK(failover_attempts >= 0),
+                    failover_engines_json TEXT NOT NULL DEFAULT '[]',
                     lease_owner TEXT NOT NULL DEFAULT '',
                     lease_token TEXT NOT NULL DEFAULT '',
                     lease_expires_at TEXT
@@ -483,9 +524,31 @@ class RunRepository:
                     ON durable_runs(status, lease_expires_at);
                 """
             )
+            columns = {
+                str(row["name"])
+                for row in db.execute("PRAGMA table_info(durable_runs)").fetchall()
+            }
+            if "failover_attempts" not in columns:
+                db.execute(
+                    "ALTER TABLE durable_runs ADD COLUMN "
+                    "failover_attempts INTEGER NOT NULL DEFAULT 0"
+                )
+            if "failover_engines_json" not in columns:
+                db.execute(
+                    "ALTER TABLE durable_runs ADD COLUMN "
+                    "failover_engines_json TEXT NOT NULL DEFAULT '[]'"
+                )
 
 
 def _run_from_row(row: sqlite3.Row) -> DurableRun:
+    columns = set(row.keys())
+    attempts = int(row["failover_attempts"]) if "failover_attempts" in columns else 0
+    engines: tuple[str, ...] = ()
+    if "failover_engines_json" in columns:
+        try:
+            engines = tuple(str(item) for item in json.loads(row["failover_engines_json"] or "[]"))
+        except (TypeError, ValueError):
+            engines = ()
     return DurableRun(
         run_id=row["run_id"],
         bot_name=row["bot_name"],
@@ -499,6 +562,8 @@ def _run_from_row(row: sqlite3.Row) -> DurableRun:
         attempt=int(row["attempt"]),
         lease_owner=row["lease_owner"],
         lease_expires_at=row["lease_expires_at"],
+        failover_attempts=attempts,
+        failover_engines=engines,
     )
 
 

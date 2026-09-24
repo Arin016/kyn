@@ -170,3 +170,41 @@ def test_keyset_pagination_covers_more_than_one_page(tmp_path) -> None:
     assert [run.run_id for run in first + second + third] == [
         "run-0", "run-1", "run-2", "run-3", "run-4"
     ]
+
+
+def test_claim_loser_gets_no_lease_on_guarded_update_race(tmp_path) -> None:
+    """A lost claim race must return None, never a phantom lease."""
+    repository = _repository(tmp_path)
+    repository.enqueue("run-1", "builder", "Do work", now=NOW)
+    winner = repository.claim("run-1", "worker-1", now=NOW)
+    assert winner is not None
+    # Row is now running: a second claim for the same row loses the race.
+    assert repository.claim("run-1", "worker-2", now=NOW) is None
+    # And claiming for another queued run still works.
+    repository.enqueue("run-2", "builder", "More work", now=NOW)
+    assert repository.claim("run-2", "worker-2", now=NOW) is not None
+
+
+def test_failover_chain_survives_repository_reopen(tmp_path) -> None:
+    repository = _repository(tmp_path)
+    repository.enqueue("run-1", "builder", "Do work", now=NOW)
+    lease = repository.claim("run-1", "worker-1", now=NOW)
+    assert lease is not None
+    recorded = repository.record_failover(
+        "run-1",
+        lease.token,
+        failover_attempts=2,
+        failover_engines=("kiro", "opencode"),
+        now=NOW,
+    )
+    assert recorded.failover_attempts == 2
+    assert recorded.failover_engines == ("kiro", "opencode")
+
+    reopened = _repository(tmp_path)
+    restored = reopened.get("run-1")
+    assert restored is not None
+    assert restored.failover_attempts == 2
+    assert restored.failover_engines == ("kiro", "opencode")
+
+    with pytest.raises(InvalidLease):
+        reopened.record_failover("run-1", "bogus-token", failover_attempts=3)
