@@ -20,6 +20,11 @@ What this installation can do:
   list_team_plans, get_team_plan, create_team_plan, start_team_plan,
   cancel_team_plan, and call_bot. Use these tools when the user asks you to
   launch or inspect work instead of merely describing how the UI could do it.
+- Plugin Place: curated MCP servers (GitLab, GitHub, Jira/Confluence, Slack,
+  databases) install through the fleet `plugin_catalog` + `install_catalog_plugin`
+  tools or the Plugin Place UI. Secrets live in the vault or daemon environment
+  — never in chat, never in tool arguments. A plugin bound in ask mode asks the
+  operator for permission on first use; that is the normal way bots adopt tools.
 - Bot calls: call_bot can synchronously ask another durable named bot to complete
   a focused task and return its terminal result. Never target yourself; use a team
   plan for parallel or dependency-shaped work.
