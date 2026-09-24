@@ -661,6 +661,20 @@ def create_app(
     async def list_bots() -> list[dict[str, Any]]:
         return [_bot_payload(bot) for bot in active_store.list_bots()]
 
+    def _publish_roster(scope: str, action: str, name: str) -> None:
+        """Push a roster change to live control rooms (sidebar, groups).
+
+        Polling is not how production stays fresh — every in-daemon bot/group
+        mutation announces itself on the live bus so connected windows update
+        in the same beat the change commits.
+        """
+        try:
+            active_live.publish(
+                {"type": "roster", "scope": scope, "action": action, "name": name}
+            )
+        except Exception:
+            pass
+
     @app.post("/api/bots", status_code=201)
     async def create_bot(body: CreateBotBody) -> dict[str, Any]:
         name = _validate_bot_name(body.name)
@@ -675,6 +689,7 @@ def create_app(
         )
         active_store.put_bot(bot)
         ensure_bot_control(active_plugins, bot.name)
+        _publish_roster("bots", "created", bot.name)
         return _bot_payload(bot)
 
     @app.delete("/api/bots/{name}", status_code=200)
@@ -704,6 +719,7 @@ def create_app(
             deleted = bool(cursor.rowcount)
         if not deleted:
             raise HTTPException(status_code=404, detail=f"bot {name!r} was not found")
+        _publish_roster("bots", "deleted", bot.name)
         return {"deleted": True, "name": bot.name}
 
     @app.get("/api/bots/{name}")
@@ -738,6 +754,7 @@ def create_app(
                     applied_live = bool(result.get("applied_live")) if isinstance(result, dict) else False
                 except KeyError:
                     applied_live = False
+        _publish_roster("bots", "updated", updated.name)
         return {**_bot_payload(updated), "applied_live": applied_live}
 
     @app.get("/api/directories")
@@ -802,11 +819,13 @@ def create_app(
                     mcp_servers=bot.mcp_servers,
                 )
             )
+            _publish_roster("bots", "updated", name)
             return {"bot": name, "model": body.model.strip(), "applied_live": False}
         try:
             result = await _maybe_await(switch(name, body.model))
         except KeyError:
             raise HTTPException(status_code=404, detail=f"bot {name!r} was not found")
+        _publish_roster("bots", "updated", name)
         return {"bot": name, **_json_safe(result)}
 
     @app.get("/api/bots/{name}/history")
@@ -1387,6 +1406,7 @@ def create_app(
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         if body.start:
             await active_group_coordinator.start(group.id)
+        _publish_roster("groups", "created", group.id)
         return _group_payload(group.id)
 
     @app.get("/api/groups/{group_id}")
@@ -1405,6 +1425,7 @@ def create_app(
             )
         except (TypeError, ValueError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        _publish_roster("groups", "updated", group_id)
         return {"message": message.summary(), "group": _group_payload(group_id)}
 
     @app.put("/api/groups/{group_id}/context")
@@ -1414,6 +1435,7 @@ def create_app(
             group = await asyncio.to_thread(active_groups.set_context_note, group_id, body.note)
         except (TypeError, ValueError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        _publish_roster("groups", "updated", group.id)
         return _group_payload(group.id)
 
     @app.post("/api/groups/{group_id}/start")
@@ -1422,11 +1444,13 @@ def create_app(
             await active_group_coordinator.start(group_id, rounds=rounds)
         except (TypeError, ValueError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        _publish_roster("groups", "updated", group_id)
         return _group_payload(group_id)
 
     @app.post("/api/groups/{group_id}/stop")
     async def stop_group(group_id: str) -> dict[str, Any]:
         await active_group_coordinator.stop(group_id)
+        _publish_roster("groups", "updated", group_id)
         return _group_payload(group_id)
 
     @app.delete("/api/groups/{group_id}")
@@ -1436,6 +1460,7 @@ def create_app(
             await active_group_coordinator.stop(group_id)
         if not active_groups.delete_group(group_id):
             raise GroupNotFound(group_id)
+        _publish_roster("groups", "deleted", group_id)
         return {"deleted": True, "id": group_id}
 
     @app.post("/hooks/slack/{binding_id}")

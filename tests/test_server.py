@@ -435,6 +435,61 @@ def test_authenticated_channel_routes_and_delivery_deduplication(
         assert len(client.get("/api/channel-events").json()) == 3
 
 
+def test_roster_events_publish_on_bot_and_group_mutations(tmp_path: Path) -> None:
+    """Every in-daemon roster mutation must announce itself on the live bus."""
+    engine = FakeEngine()
+    app = create_app(Store(tmp_path / "store"), engine)
+    queue = app.state.live.subscribe()
+    with _test_client(app) as client:
+        assert client.post(
+            "/api/bots", json={"name": "builder", "cwd": str(tmp_path)}
+        ).status_code == 201
+        assert queue.get_nowait() == {
+            "type": "roster",
+            "scope": "bots",
+            "action": "created",
+            "name": "builder",
+        }
+
+        assert client.patch("/api/bots/builder", json={"model": "x"}).status_code == 200
+        assert queue.get_nowait() == {
+            "type": "roster",
+            "scope": "bots",
+            "action": "updated",
+            "name": "builder",
+        }
+
+        group = client.post(
+            "/api/groups",
+            json={
+                "name": "Crew",
+                "aim": "Ship it",
+                "members": ["builder"],
+                "start": False,
+            },
+        )
+        assert group.status_code == 201
+        group_id = group.json()["group"]["id"]
+        created_event = queue.get_nowait()
+        assert created_event["type"] == "roster"
+        assert created_event["scope"] == "groups"
+        assert created_event["action"] == "created"
+
+        assert client.delete(f"/api/groups/{group_id}").status_code == 200
+        deleted_group = queue.get_nowait()
+        assert deleted_group["type"] == "roster"
+        assert deleted_group["scope"] == "groups"
+        assert deleted_group["action"] == "deleted"
+
+        assert client.delete("/api/bots/builder").status_code == 200
+        assert queue.get_nowait() == {
+            "type": "roster",
+            "scope": "bots",
+            "action": "deleted",
+            "name": "builder",
+        }
+
+
 def test_policy_routine_plugin_and_audit_routes(tmp_path: Path) -> None:
     engine = FakeEngine()
     app = create_app(Store(tmp_path / "store"), engine)
