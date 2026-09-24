@@ -5467,6 +5467,8 @@ details summary {
 .group-bubble.is-typing {
   display: inline-flex;
   align-items: center;
+  align-self: flex-start;
+  width: fit-content;
   padding: 9px 13px;
 }
 
