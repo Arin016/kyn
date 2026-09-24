@@ -526,8 +526,12 @@ class Engine:
             close = getattr(worker, "close", None)
         try:
             if not model:
+                # Reset: drop the live session so the next turn starts on the
+                # engine default. That is a real, immediate change.
                 if close is not None:
                     await close()
+                    return {"model": model, "applied_live": True}
+                return {"model": model, "applied_live": False}
             elif bot.engine == "opencode":
                 await session.set_config_option("model", model)
             elif bot.engine == "kiro":

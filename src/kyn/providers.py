@@ -61,6 +61,25 @@ def spec(engine: str) -> EngineSpec:
     return _ENGINES[normalize_engine(engine)]
 
 
+# Authoritative Kiro catalogue — mirrored by the UI (web-ui Dialogs.tsx).
+_KIRO_MODEL_CATALOGUE: list[dict[str, str]] = [
+    {"id": "claude-sonnet-4-5", "label": "Claude Sonnet 4.5"},
+    {"id": "claude-opus-4-1", "label": "Claude Opus 4.1"},
+    {"id": "claude-haiku-4-5", "label": "Claude Haiku 4.5"},
+    {"id": "claude-sonnet-4", "label": "Claude Sonnet 4"},
+    {"id": "claude-opus-4", "label": "Claude Opus 4"},
+    {"id": "claude-3-5-sonnet-latest", "label": "Claude 3.5 Sonnet"},
+]
+
+# Suggested Codex model ids (free-text ids are still accepted everywhere).
+_CODEX_MODEL_SUGGESTIONS: list[dict[str, str]] = [
+    {"id": "gpt-5.1-codex-max", "label": "GPT-5.1 Codex Max"},
+    {"id": "gpt-5.1-codex", "label": "GPT-5.1 Codex"},
+    {"id": "gpt-5.1-codex-mini", "label": "GPT-5.1 Codex Mini"},
+    {"id": "o4-mini", "label": "o4-mini"},
+]
+
+
 def command_for(engine: str, cwd: str) -> list[str] | None:
     name = normalize_engine(engine)
     if name == "kiro":
@@ -83,10 +102,15 @@ def command_for(engine: str, cwd: str) -> list[str] | None:
 def models_for(engine: str) -> list[dict[str, str]]:
     """List selectable native models for an engine.
 
-    Only engines that expose a machine-readable local model list are
-    supported. Kiro models stay a curated UI list; Codex accepts free text.
+    OpenCode reads its live model registry from the local CLI. Kiro uses the
+    curated catalogue the rest of the product ships; Codex models are a
+    suggestion set (Codex accepts free-text model ids everywhere).
     """
     name = normalize_engine(engine)
+    if name == "kiro":
+        return [dict(item) for item in _KIRO_MODEL_CATALOGUE]
+    if name == "codex":
+        return [dict(item) for item in _CODEX_MODEL_SUGGESTIONS]
     if name != "opencode":
         raise ProviderError(f"model listing is not supported for engine {name!r}")
     binary = shutil.which("opencode")

@@ -1015,8 +1015,10 @@ def test_set_bot_model_updates_store_and_live_session(tmp_path: Path) -> None:
             assert result == {"model": "opencode/big-pickle", "applied_live": True}
             assert calls == [("model", "opencode/big-pickle")]
 
+            # Resetting to "" drops the live session, so the next turn
+            # provably starts on the engine default — that is applied live.
             result = await engine.set_bot_model("alpha", "")
-            assert result == {"model": "", "applied_live": False}
+            assert result == {"model": "", "applied_live": True}
 
             with pytest.raises(KeyError):
                 await engine.set_bot_model("ghost", "x")

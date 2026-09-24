@@ -55,8 +55,16 @@ def test_models_for_lists_opencode_models(monkeypatch) -> None:
 
 
 def test_models_for_rejects_other_engines() -> None:
-    with pytest.raises(ProviderError, match="not supported"):
-        models_for("kiro")
+    # Kiro and Codex now return curated model lists; unknown engines are rejected.
+    with pytest.raises(ProviderError, match="unknown agent engine"):
+        models_for("doesnotexist")
+
+
+def test_models_for_curated_catalogues() -> None:
+    kiro = models_for("kiro")
+    assert any(item["id"] == "claude-sonnet-4-5" for item in kiro)
+    codex = models_for("codex")
+    assert any("codex" in item["id"] for item in codex)
 
 
 def test_initialize_params_match_each_engine() -> None:

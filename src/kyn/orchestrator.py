@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import AsyncIterator
 
@@ -9,6 +10,8 @@ from .providers import ProviderError, command_for, initialize_params, spec
 from .runtime import AcpError, AcpRuntime
 from .session import AcpSession
 from .store import Bot, Store
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class BotOrchestrator:
@@ -80,8 +83,13 @@ class BotOrchestrator:
             # A per-run workspace is an isolated execution context. Reusing or
             # replacing the bot's durable conversation would mix cwd-specific
             # context and make a later normal chat point at the wrong tree.
+            # A reset-to-default model also skips the resume: the saved native
+            # session restores whatever model it last ran with, so loading it
+            # would silently resurrect the model the user just cleared. Durable
+            # turns stay in Store.history, so no conversation is lost.
             saved = None
-            if cwd_override is None and engine.resume_native_conversation:
+            model_reset = engine.supports_models and not bot.model
+            if cwd_override is None and engine.resume_native_conversation and not model_reset:
                 saved = self.store.conversation(bot.name)
             if saved:
                 session_id, transcript_path = saved
@@ -100,15 +108,30 @@ class BotOrchestrator:
                     await self.runtime.close()
                     self.runtime = AcpRuntime(
                         runtime_cwd,
-                        agent=bot.agent,
-                        model=bot.model,
-                        effort=bot.effort,
+                        agent=bot.agent if engine.supports_modes else "",
+                        model=bot.model if engine.supports_models else "",
+                        effort=bot.effort if engine.name == "kiro" else "",
                         command=command,
                         engine_label=engine.label,
                         initialize_params=initialize_params(engine.name),
                         identity_namespace=engine.identity_namespace,
                     )
                     await self.runtime.start()
+
+            if saved and self.session is not None and engine.supports_models and bot.model:
+                # Resume must honor the bot's configured model too — a saved
+                # session restores whatever model it last ran with.
+                try:
+                    if engine.model_config_option:
+                        await self.session.set_config_option(engine.model_config_option, bot.model)
+                    else:
+                        await self.session.set_model(bot.model)
+                except AcpError:
+                    _LOGGER.warning(
+                        "Could not apply model %r to resumed session for %s",
+                        bot.model,
+                        bot.name,
+                    )
 
             if self.session is None:
                 self.session = await self.runtime.create_session(mcp_servers)
