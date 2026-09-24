@@ -1894,6 +1894,7 @@ function ControlRoom({ onExit }: { onExit: () => void }) {
               type="button"
               className="header-logo"
               aria-label="Back to landing page"
+              title="Back to landing page"
               onClick={onExit}
             >
               <AriGlyph size={20} finish="silver" />
@@ -2346,9 +2347,12 @@ function resolveView(): View {
     return "setup";
   }
   if (isMarketingDeploy) {
-    if (location.hash.includes("console")) return "console";
+    // Public site opens on the interface demo; the landing page lives at
+    // ?page=landing (reached via the header logo button).
     if (location.hash.includes("engineering")) return "engineering";
-    return "landing";
+    if (new URLSearchParams(location.search).get("page") === "landing") return "landing";
+    if (location.hash.includes("landing")) return "landing";
+    return "console";
   }
   if (new URLSearchParams(location.search).has("bot")) return "console";
   if (location.hash.includes("console")) return "console";
@@ -2381,7 +2385,10 @@ function AppShell() {
   }, [view, clearToasts]);
 
   const enterConsole = useCallback(() => {
-    history.replaceState(null, "", "#console");
+    const url = new URL(location.href);
+    url.hash = "#console";
+    url.searchParams.delete("page");
+    history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
     setView("console");
   }, []);
 
@@ -2417,7 +2424,11 @@ function AppShell() {
     }
     const url = new URL(location.href);
     url.hash = "";
-    url.search = "";
+    if (isMarketingDeploy) {
+      url.searchParams.set("page", "landing");
+    } else {
+      url.search = "";
+    }
     history.replaceState(null, "", `${url.pathname}${url.search}`);
     setView("landing");
   }, []);
