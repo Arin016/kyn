@@ -561,6 +561,47 @@ def test_control_authorize_gates_bot_delegation(tmp_path: Path) -> None:
         assert allowed.json()["allowed"] is True
 
 
+def test_turn_retry_and_fork(tmp_path: Path) -> None:
+    from kyn.protocol import Event
+
+    engine = FakeEngine()
+    store = Store(tmp_path / "store")
+    app = create_app(store, engine)
+    with _test_client(app) as client:
+        assert client.post(
+            "/api/bots", json={"name": "sherpa", "cwd": str(tmp_path)}
+        ).status_code == 201
+        assert client.post(
+            "/api/bots", json={"name": "nick", "cwd": str(tmp_path)}
+        ).status_code == 201
+        turn_id = store.begin_turn("sherpa", "review the export code")
+        store.add_event(turn_id, 1, Event(kind="text", text="on it"))
+        store.finish_turn(turn_id, "complete", "end_turn")
+
+        retried = client.post(f"/api/bots/sherpa/turns/{turn_id}/retry", json={})
+        assert retried.status_code == 202
+        assert retried.json()["turn_id"] == turn_id
+        assert engine.runs[retried.json()["run_id"]].bot_name == "sherpa"
+
+        edited = client.post(
+            f"/api/bots/sherpa/turns/{turn_id}/retry", json={"message": "review it again, deeper"}
+        )
+        assert edited.status_code == 202
+
+        forked = client.post(
+            f"/api/bots/sherpa/turns/{turn_id}/fork", json={"to_bot": "nick"}
+        )
+        assert forked.status_code == 202
+        assert forked.json()["to_bot"] == "nick"
+        assert engine.runs[forked.json()["run_id"]].bot_name == "nick"
+
+        assert client.post(
+            f"/api/bots/sherpa/turns/{turn_id}/fork", json={"to_bot": "sherpa"}
+        ).status_code == 422
+        assert client.post("/api/bots/sherpa/turns/999999/retry", json={}).status_code == 404
+        assert client.post("/api/bots/nick/turns/999999/fork", json={"to_bot": "sherpa"}).status_code == 404
+
+
 def test_policy_routine_plugin_and_audit_routes(tmp_path: Path) -> None:
     engine = FakeEngine()
     app = create_app(Store(tmp_path / "store"), engine)

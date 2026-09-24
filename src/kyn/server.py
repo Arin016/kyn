@@ -105,6 +105,14 @@ if FastAPI is not None:
     class TurnBody(BaseModel):
         message: str = Field(min_length=1)
 
+    class RetryBody(BaseModel):
+        # Edited replacement for the turn's prompt. Omitted = retry verbatim.
+        message: str | None = None
+
+    class ForkBody(BaseModel):
+        to_bot: str = Field(min_length=1, max_length=128)
+        budget_tokens: int = Field(default=12000, ge=500, le=50000)
+
     class AuthorizeBody(BaseModel):
         caller: str = Field(min_length=1, max_length=128)
         tool: str = Field(min_length=1, max_length=128)
@@ -938,6 +946,83 @@ def create_app(
         if not run_id:
             raise RuntimeError("engine.submit returned no run identifier")
         return {"run_id": run_id}
+
+    @app.post("/api/bots/{name}/turns/{turn_id}/retry", status_code=202)
+    async def retry_turn(name: str, turn_id: int, body: RetryBody) -> dict[str, Any]:
+        """Re-run a durable turn, verbatim or with an edited prompt.
+
+        Operator-initiated (UI button), so the delegation guardrail does not
+        apply: the human explicitly asked for this run.
+        """
+        bot = _require_bot(active_store, name)
+        turn = await asyncio.to_thread(active_store.get_turn, turn_id)
+        if turn is None or str(turn.get("bot_name") or "") != bot.name:
+            raise HTTPException(status_code=404, detail="turn was not found for this bot")
+        message = body.message.strip() if body.message is not None else str(turn.get("prompt") or "")
+        if not message:
+            raise HTTPException(status_code=422, detail="turn has no prompt to retry")
+        run = await _maybe_await(active_engine.submit(bot.name, message))
+        run_id = _run_id(run)
+        if not run_id:
+            raise RuntimeError("engine.submit returned no run identifier")
+        return {"run_id": run_id, "turn_id": turn_id, "retried": True}
+
+    @app.post("/api/bots/{name}/turns/{turn_id}/fork", status_code=202)
+    async def fork_turn(name: str, turn_id: int, body: ForkBody) -> dict[str, Any]:
+        """Continue a turn on another bot, carrying a handoff bundle.
+
+        Compiles the source bot's durable context (objective, memory, salient
+        events, workspace reality) plus this turn's original request, and
+        submits it as a fresh run on the target bot — e.g. escalate a stuck
+        review to a stronger engine. Operator-initiated; no guardrail applies.
+        """
+        source = _require_bot(active_store, name)
+        target = _require_bot(active_store, body.to_bot.strip())
+        if target.name == source.name:
+            raise HTTPException(status_code=422, detail="fork needs a different bot; use retry")
+        turn = await asyncio.to_thread(active_store.get_turn, turn_id)
+        if turn is None or str(turn.get("bot_name") or "") != source.name:
+            raise HTTPException(status_code=404, detail="turn was not found for this bot")
+        try:
+            bundle = await asyncio.to_thread(
+                compile_handoff,
+                active_store,
+                source.name,
+                to_engine=target.engine,
+                budget_tokens=body.budget_tokens,
+            )
+            context = str(bundle["prompt"])
+        except HandoffError:
+            # Source bot lives outside a git repo (or has thin history): fall
+            # back to recent turn text instead of refusing the fork.
+            recent = await asyncio.to_thread(active_store.history, source.name, 5)
+            chunks: list[str] = []
+            for recent_turn in recent:
+                texts = [
+                    str(event.get("text") or "")
+                    for event in recent_turn.get("events", [])
+                    if str(event.get("kind") or "") == "text"
+                    and str(event.get("text") or "").strip()
+                ]
+                if texts:
+                    chunks.append(
+                        f"[{recent_turn.get('prompt') or 'earlier turn'}]\n"
+                        + "\n".join(texts)
+                    )
+            context = "Recent context from {}:\n{}".format(
+                source.name, "\n\n".join(chunks)[:8000] or "(no text recorded)"
+            )
+        prompt = str(turn.get("prompt") or "")
+        message = (
+            f"{context}\n\n<forked_request>\n"
+            f"Continue this specific request on {target.name}:\n{prompt}\n"
+            "</forked_request>"
+        )
+        run = await _maybe_await(active_engine.submit(target.name, message))
+        run_id = _run_id(run)
+        if not run_id:
+            raise RuntimeError("engine.submit returned no run identifier")
+        return {"run_id": run_id, "turn_id": turn_id, "to_bot": target.name}
 
     @app.post("/api/control/authorize")
     async def authorize_control_tool(body: AuthorizeBody) -> dict[str, Any]:

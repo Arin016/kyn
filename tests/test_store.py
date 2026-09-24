@@ -29,3 +29,21 @@ def test_history_is_chronological_and_includes_events(tmp_path) -> None:
     history = store.history("builder")
     assert [turn["prompt"] for turn in history] == ["first", "second"]
     assert history[0]["events"][0]["text"] == "one"
+
+
+def test_get_turn_returns_one_turn_with_events(tmp_path) -> None:
+    store = Store(tmp_path)
+    store.put_bot(Bot(name="builder", cwd=str(tmp_path)))
+    first = store.begin_turn("builder", "first")
+    store.add_event(first, 1, Event(kind="text", text="one"))
+    store.finish_turn(first, "complete", "end_turn")
+    second = store.begin_turn("builder", "second")
+    store.finish_turn(second, "complete", "end_turn")
+
+    turn = store.get_turn(first)
+    assert turn is not None
+    assert turn["prompt"] == "first"
+    assert turn["events"][0]["text"] == "one"
+    assert store.get_turn(999999) is None
+    # Same shape as history items.
+    assert set(store.history("builder")[0]) == set(turn)

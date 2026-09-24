@@ -184,35 +184,52 @@ class Store:
             ).fetchall()
             result: list[dict[str, Any]] = []
             for turn in reversed(turns):
-                events = db.execute(
-                    """
-                    SELECT sequence, kind, payload_json, created_at
-                    FROM events WHERE turn_id = ? ORDER BY sequence
-                    """,
-                    (turn["id"],),
-                ).fetchall()
-                result.append(
-                    {
-                        "id": turn["id"],
-                        "bot_name": turn["bot_name"],
-                        "prompt": display_prompt(str(turn["prompt"] or "")),
-                        "engine": turn["engine"] if "engine" in turn.keys() else "",
-                        "status": turn["status"],
-                        "stop_reason": turn["stop_reason"],
-                        "started_at": turn["started_at"],
-                        "finished_at": turn["finished_at"],
-                        "events": [
-                            {
-                                "sequence": event["sequence"],
-                                "kind": event["kind"],
-                                "created_at": event["created_at"],
-                                **json.loads(event["payload_json"]),
-                            }
-                            for event in events
-                        ],
-                    }
-                )
+                result.append(self._turn_with_events(db, turn))
         return result
+
+    def get_turn(self, turn_id: int) -> dict[str, Any] | None:
+        """Return one durable turn with its events, or None."""
+        with self.connect() as db:
+            turn = db.execute(
+                """
+                SELECT id, bot_name, prompt, engine, status, stop_reason,
+                       started_at, finished_at
+                FROM turns WHERE id = ?
+                """,
+                (int(turn_id),),
+            ).fetchone()
+            if turn is None:
+                return None
+            return self._turn_with_events(db, turn)
+
+    @staticmethod
+    def _turn_with_events(db: Any, turn: Any) -> dict[str, Any]:
+        events = db.execute(
+            """
+            SELECT sequence, kind, payload_json, created_at
+            FROM events WHERE turn_id = ? ORDER BY sequence
+            """,
+            (turn["id"],),
+        ).fetchall()
+        return {
+            "id": turn["id"],
+            "bot_name": turn["bot_name"],
+            "prompt": display_prompt(str(turn["prompt"] or "")),
+            "engine": turn["engine"] if "engine" in turn.keys() else "",
+            "status": turn["status"],
+            "stop_reason": turn["stop_reason"],
+            "started_at": turn["started_at"],
+            "finished_at": turn["finished_at"],
+            "events": [
+                {
+                    "sequence": event["sequence"],
+                    "kind": event["kind"],
+                    "created_at": event["created_at"],
+                    **json.loads(event["payload_json"]),
+                }
+                for event in events
+            ],
+        }
 
     def _migrate(self) -> None:
         with self.connect() as db:
