@@ -173,3 +173,54 @@ def test_create_team_plan_denied_without_explicit_ask(monkeypatch) -> None:
             "create_team_plan",
             {"name": "rogue", "nodes": [{"id": "n1", "bot_name": "chief", "prompt": "x"}]},
         )
+
+
+def test_memory_tools_advertised_and_caller_scoped(monkeypatch) -> None:
+    import kyn.control_mcp as control_mcp
+
+    assert {"memory_remember", "memory_search", "memory_forget", "memory_pin"} <= {
+        item["name"] for item in control_mcp.TOOLS
+    }
+
+    calls: list[tuple[str, str, object]] = []
+
+    def fake_http(base: str, method: str, path: str, payload: object = None) -> object:
+        calls.append((method, path, payload))
+        if path.startswith("/api/bots/nick/memory/facts") and method == "POST":
+            return {"id": "fact-1", "fact": "x"}
+        if path.startswith("/api/bots/nick/memory/facts") and method == "GET":
+            return {"bot": "nick", "facts": []}
+        raise AssertionError(f"unexpected call {method} {path}")
+
+    monkeypatch.setattr(control_mcp, "_http", fake_http)
+    result = control_mcp._call_tool(
+        "http://127.0.0.1:8765", "nick", "memory_remember", {"fact": "Deploys on Friday"}
+    )
+    assert result == {"id": "fact-1", "fact": "x"}
+    # Caller-bound: the tool never accepts a foreign bot name.
+    assert calls[0][1] == "/api/bots/nick/memory/facts"
+    assert calls[0][2] == {
+        "fact": "Deploys on Friday",
+        "entities": [],
+        "source": "",
+        "actor": "nick",
+    }
+    result = control_mcp._call_tool(
+        "http://127.0.0.1:8765", "nick", "memory_search", {"query": "deploys"}
+    )
+    assert result == {"bot": "nick", "facts": []}
+    assert "q=deploys" in calls[1][1]
+
+    result = control_mcp._call_tool(
+        "http://127.0.0.1:8765", "nick", "memory_forget", {"fact_id": "fact-1"}
+    )
+    assert calls[2][1] == "/api/bots/nick/memory/facts/fact-1/forget"
+    result = control_mcp._call_tool(
+        "http://127.0.0.1:8765", "nick", "memory_pin", {"fact_id": "fact-1"}
+    )
+    assert calls[3][1] == "/api/bots/nick/memory/facts/fact-1/pin"
+
+    with pytest.raises(ValueError, match="fact is required"):
+        control_mcp._call_tool("http://127.0.0.1:8765", "nick", "memory_remember", {})
+    with pytest.raises(ValueError, match="query is required"):
+        control_mcp._call_tool("http://127.0.0.1:8765", "nick", "memory_search", {})

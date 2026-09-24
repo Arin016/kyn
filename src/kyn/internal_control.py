@@ -15,6 +15,10 @@ CONTROL_TOOLS = (
     "start_team_plan",
     "cancel_team_plan",
     "call_bot",
+    "memory_remember",
+    "memory_search",
+    "memory_forget",
+    "memory_pin",
 )
 
 

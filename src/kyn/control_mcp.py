@@ -104,6 +104,72 @@ TOOLS = [
             "additionalProperties": False,
         },
     },
+    {
+        "name": "memory_remember",
+        "description": (
+            "Record one durable fact in YOUR OWN memory (caller-scoped, never another "
+            "bot's): a decision, preference, or durable lesson worth recalling in later "
+            "turns. Facts outrank raw history in recall. Use sparingly — a handful of "
+            "crisp facts beats a diary. Entities help later recall (e.g. repo names)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "fact": {"type": "string", "maxLength": 2000},
+                "entities": {"type": "array", "items": {"type": "string"}, "maxItems": 20},
+                "source": {"type": "string", "maxLength": 500},
+            },
+            "required": ["fact"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "memory_search",
+        "description": (
+            "Search YOUR OWN memory (facts first, then history) for relevant context "
+            "before answering from memory. Prefer this over guessing; if nothing "
+            "relevant comes back, say so instead of confabulating."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 20, "default": 8},
+            },
+            "required": ["query"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "memory_forget",
+        "description": (
+            "Retire one of YOUR OWN facts by id (from memory_search) when it is wrong "
+            "or stale. History is never rewritten — the fact is marked invalid and "
+            "stops being recalled."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"fact_id": {"type": "string"}},
+            "required": ["fact_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "memory_pin",
+        "description": (
+            "Pin or unpin one of YOUR OWN facts. Pinned facts always surface first "
+            "in recall — use for operator-confirmed rules and identity."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "fact_id": {"type": "string"},
+                "pinned": {"type": "boolean", "default": True},
+            },
+            "required": ["fact_id"],
+            "additionalProperties": False,
+        },
+    },
 ]
 
 
@@ -206,6 +272,59 @@ def _call_tool(base: str, caller: str, name: str, args: dict[str, Any]) -> Any:
         raise TimeoutError(
             f"bot call {run_id} did not finish before the timeout and was cancelled "
             f"(callee status: {run.get('status', 'unknown')})"
+        )
+    # Own-memory tools: always caller-scoped, never gated — writing down what
+    # you learned is not delegation.
+    if name == "memory_remember":
+        fact = str(args.get("fact") or "").strip()
+        if not fact:
+            raise ValueError("fact is required")
+        entities = args.get("entities") or []
+        if not isinstance(entities, list) or not all(isinstance(item, str) for item in entities):
+            raise ValueError("entities must be a list of strings")
+        return _http(
+            base,
+            "POST",
+            f"/api/bots/{urllib.parse.quote(caller, safe='')}/memory/facts",
+            {
+                "fact": fact,
+                "entities": entities[:20],
+                "source": str(args.get("source") or ""),
+                "actor": caller,
+            },
+        )
+    if name == "memory_search":
+        query = str(args.get("query") or "").strip()
+        if not query:
+            raise ValueError("query is required")
+        limit = min(max(int(args.get("limit") or 8), 1), 20)
+        return _http(
+            base,
+            "GET",
+            f"/api/bots/{urllib.parse.quote(caller, safe='')}/memory/facts"
+            f"?q={urllib.parse.quote(query, safe='')}&limit={limit}",
+        )
+    if name == "memory_forget":
+        fact_id = str(args.get("fact_id") or "").strip()
+        if not fact_id:
+            raise ValueError("fact_id is required")
+        return _http(
+            base,
+            "POST",
+            f"/api/bots/{urllib.parse.quote(caller, safe='')}/memory/facts/"
+            f"{urllib.parse.quote(fact_id, safe='')}/forget",
+            {},
+        )
+    if name == "memory_pin":
+        fact_id = str(args.get("fact_id") or "").strip()
+        if not fact_id:
+            raise ValueError("fact_id is required")
+        return _http(
+            base,
+            "POST",
+            f"/api/bots/{urllib.parse.quote(caller, safe='')}/memory/facts/"
+            f"{urllib.parse.quote(fact_id, safe='')}/pin",
+            {"pinned": bool(args.get("pinned", True))},
         )
     raise ValueError(f"unknown control tool {name!r}")
 
