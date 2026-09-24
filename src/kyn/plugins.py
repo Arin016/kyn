@@ -460,16 +460,36 @@ class PluginRegistry:
                 resolved_env = []
                 for target_name, reference in sorted(plugin.env.items()):
                     source_name = reference.removeprefix("env:")
-                    if source_name not in source_env:
-                        raise SecretResolutionError(
-                            f"plugin {plugin.id!r} requires environment variable {source_name!r}"
-                        )
-                    resolved_env.append({"name": target_name, "value": str(source_env[source_name])})
+                    value = self._secret_value(plugin.id, source_name)
+                    if value is None:
+                        if source_name not in source_env:
+                            raise SecretResolutionError(
+                                f"plugin {plugin.id!r} requires environment variable {source_name!r}"
+                            )
+                        value = str(source_env[source_name])
+                    resolved_env.append({"name": target_name, "value": value})
+                resolved_args = []
+                for part in plugin.args:
+                    # Ephemeral secret refs in argv (e.g. a database URL the
+                    # server only accepts positionally): resolved here, never
+                    # persisted — summaries keep showing `env:NAME`.
+                    if str(part).startswith("env:"):
+                        source_name = str(part).removeprefix("env:")
+                        value = self._secret_value(plugin.id, source_name)
+                        if value is None:
+                            if source_name not in source_env:
+                                raise SecretResolutionError(
+                                    f"plugin {plugin.id!r} requires environment variable {source_name!r}"
+                                )
+                            value = str(source_env[source_name])
+                        resolved_args.append(value)
+                    else:
+                        resolved_args.append(str(part))
                 server.update(
                     {
                         "type": "stdio",
                         "command": plugin.command,
-                        "args": list(plugin.args),
+                        "args": resolved_args,
                         "env": resolved_env,
                     }
                 )
@@ -496,6 +516,58 @@ class PluginRegistry:
 
     def binding_summaries(self, bot_name: str) -> list[dict[str, Any]]:
         return [binding.summary() for binding in self.list_bindings(bot_name)]
+
+    # -- managed secrets -------------------------------------------------
+    # Operator-pasted tokens (GitLab PAT, Slack bot token, …) live here —
+    # owner-only SQLite rows — instead of the daemon environment, so the
+    # Plugin Place can collect them per plugin through the UI. Values are
+    # NEVER listed: only names. Resolution order at session compile is
+    # vault first, process environment second.
+
+    def set_secret(self, plugin_id: str, name: str, value: str) -> None:
+        self.require_plugin(plugin_id)
+        key = _validate_secret_name(name)
+        secret = str(value or "")
+        if not secret:
+            raise PluginRegistryError("secret value must not be empty")
+        if len(secret) > 8_192:
+            raise PluginRegistryError("secret value is too long")
+        with self.store.connect() as db:
+            db.execute(
+                """
+                INSERT INTO plugin_secrets(plugin_id, name, value, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(plugin_id, name) DO UPDATE SET
+                    value = excluded.value, updated_at = excluded.updated_at
+                """,
+                (plugin_id, key, secret, _now(self.store)),
+            )
+
+    def delete_secret(self, plugin_id: str, name: str) -> bool:
+        self.require_plugin(plugin_id)
+        with self.store.connect() as db:
+            cursor = db.execute(
+                "DELETE FROM plugin_secrets WHERE plugin_id = ? AND name = ?",
+                (plugin_id, _validate_secret_name(name)),
+            )
+            return bool(cursor.rowcount)
+
+    def secret_names(self, plugin_id: str) -> list[str]:
+        self.require_plugin(plugin_id)
+        with self.store.connect() as db:
+            rows = db.execute(
+                "SELECT name FROM plugin_secrets WHERE plugin_id = ? ORDER BY name",
+                (plugin_id,),
+            ).fetchall()
+        return [str(row["name"]) for row in rows]
+
+    def _secret_value(self, plugin_id: str, name: str) -> str | None:
+        with self.store.connect() as db:
+            row = db.execute(
+                "SELECT value FROM plugin_secrets WHERE plugin_id = ? AND name = ?",
+                (plugin_id, name),
+            ).fetchone()
+        return str(row["value"]) if row is not None else None
 
     def _migrate(self) -> None:
         with self.store.connect() as db:
@@ -530,6 +602,13 @@ class PluginRegistry:
                 CREATE TABLE IF NOT EXISTS plugin_config_generations (
                     bot_name TEXT PRIMARY KEY,
                     generation INTEGER NOT NULL DEFAULT 0 CHECK(generation >= 0)
+                );
+                CREATE TABLE IF NOT EXISTS plugin_secrets (
+                    plugin_id TEXT NOT NULL REFERENCES plugins(id) ON DELETE CASCADE,
+                    name TEXT NOT NULL,
+                    value TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY(plugin_id, name)
                 );
                 """
             )
@@ -573,6 +652,17 @@ def _validate_display_name(value: str) -> None:
 def _validate_bot_name(value: str) -> None:
     if not isinstance(value, str) or not value or len(value) > 200 or _CONTROL_RE.search(value):
         raise PluginRegistryError("invalid bot name")
+
+
+_SECRET_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
+
+
+def _validate_secret_name(value: str) -> str:
+    if not isinstance(value, str) or not _SECRET_NAME_RE.fullmatch(value.strip()):
+        raise PluginRegistryError(
+            "secret name must look like an environment variable (letters, digits, underscore)"
+        )
+    return value.strip()
 
 
 def _require_bot(store: Store, bot_name: str) -> None:
