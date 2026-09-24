@@ -26,6 +26,9 @@ class Bot:
     effort: str = ""
     engine: str = "kiro"
     mcp_servers: list[dict[str, Any]] | None = None
+    # Operator-written role card ("security-focused reviewer, …"). Rendered
+    # into the execution prompt; empty means no persona.
+    brief: str = ""
 
 
 class Store:
@@ -58,6 +61,7 @@ class Store:
             connection.close()
 
     def put_bot(self, bot: Bot) -> None:
+        brief = _bot_brief(bot.brief)
         bot = Bot(
             name=bot.name,
             cwd=bot.cwd,
@@ -66,17 +70,19 @@ class Store:
             effort=bot.effort,
             engine=normalize_engine(bot.engine),
             mcp_servers=bot.mcp_servers,
+            brief=brief,
         )
         now = _now()
         with self.connect() as db:
             db.execute(
                 """
-                INSERT INTO bots(name, cwd, agent, model, effort, engine, mcp_json, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO bots(name, cwd, agent, model, effort, engine, mcp_json, brief, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(name) DO UPDATE SET
                     cwd=excluded.cwd, agent=excluded.agent, model=excluded.model,
                     effort=excluded.effort, engine=excluded.engine,
-                    mcp_json=excluded.mcp_json, updated_at=excluded.updated_at
+                    mcp_json=excluded.mcp_json, brief=excluded.brief,
+                    updated_at=excluded.updated_at
                 """,
                 (
                     bot.name,
@@ -86,6 +92,7 @@ class Store:
                     bot.effort,
                     bot.engine,
                     json.dumps(bot.mcp_servers or []),
+                    bot.brief,
                     now,
                     now,
                 ),
@@ -104,6 +111,7 @@ class Store:
             effort=row["effort"],
             engine=row["engine"] if "engine" in row.keys() else "kiro",
             mcp_servers=json.loads(row["mcp_json"] or "[]"),
+            brief=str(row["brief"] or "") if "brief" in row.keys() else "",
         )
 
     def list_bots(self) -> list[Bot]:
@@ -118,6 +126,7 @@ class Store:
                 effort=row["effort"],
                 engine=row["engine"] if "engine" in row.keys() else "kiro",
                 mcp_servers=json.loads(row["mcp_json"] or "[]"),
+                brief=str(row["brief"] or "") if "brief" in row.keys() else "",
             )
             for row in rows
         ]
@@ -254,6 +263,7 @@ class Store:
                     effort TEXT NOT NULL DEFAULT '',
                     engine TEXT NOT NULL DEFAULT 'kiro',
                     mcp_json TEXT NOT NULL DEFAULT '[]',
+                    brief TEXT NOT NULL DEFAULT '',
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
@@ -290,6 +300,8 @@ class Store:
             }
             if "engine" not in columns:
                 db.execute("ALTER TABLE bots ADD COLUMN engine TEXT NOT NULL DEFAULT 'kiro'")
+            if "brief" not in columns:
+                db.execute("ALTER TABLE bots ADD COLUMN brief TEXT NOT NULL DEFAULT ''")
             turn_columns = {
                 str(row["name"])
                 for row in db.execute("PRAGMA table_info(turns)").fetchall()
@@ -300,3 +312,13 @@ class Store:
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _bot_brief(value: object) -> str:
+    """Normalize an operator-written role card (bounded plain text)."""
+    text = str(value or "").strip()
+    if len(text) > 8_000:
+        raise ValueError("brief must be at most 8000 characters")
+    if any(ord(character) < 32 and character not in ("\n", "\t") for character in text):
+        raise ValueError("brief contains control characters")
+    return text

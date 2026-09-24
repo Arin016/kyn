@@ -60,6 +60,7 @@ TOOLS = [
                 "model": {"type": "string", "default": ""},
                 "effort": {"type": "string", "default": ""},
                 "agent": {"type": "string", "default": ""},
+                "brief": {"type": "string", "default": "", "maxLength": 8000},
             },
             "required": ["name", "cwd"],
             "additionalProperties": False,
@@ -81,6 +82,7 @@ TOOLS = [
                 "effort": {"type": "string"},
                 "agent": {"type": "string"},
                 "cwd": {"type": "string"},
+                "brief": {"type": "string", "maxLength": 8000},
             },
             "required": ["name"],
             "additionalProperties": False,
@@ -324,12 +326,13 @@ def _call_tool(base: str, caller: str, name: str, args: dict[str, Any]) -> Any:
             "model": str(args.get("model") or ""),
             "effort": str(args.get("effort") or ""),
             "agent": str(args.get("agent") or ""),
+            "brief": str(args.get("brief") or ""),
         }
         return _http(base, "POST", "/api/bots", payload)
     if name == "configure_bot":
         bot_name = _quote(args, "name")
         changes: dict[str, Any] = {}
-        for key in ("model", "effort", "agent", "cwd"):
+        for key in ("model", "effort", "agent", "cwd", "brief"):
             if key in args and args[key] is not None:
                 changes[key] = str(args[key])
         if not changes:

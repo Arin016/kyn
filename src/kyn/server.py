@@ -109,6 +109,7 @@ if FastAPI is not None:
         model: str | None = None
         effort: str | None = None
         engine: str | None = None
+        brief: str | None = Field(default=None, max_length=8000)
 
 
     class TurnBody(BaseModel):
@@ -131,6 +132,7 @@ if FastAPI is not None:
         effort: str | None = None
         agent: str | None = None
         cwd: str | None = None
+        brief: str | None = Field(default=None, max_length=8000)
 
 
     class BotModelBody(BaseModel):
@@ -741,6 +743,7 @@ def create_app(
                 model=(body.model or "").strip(),
                 effort=(body.effort or "").strip(),
                 engine=(body.engine or "kiro").strip(),
+                brief=(body.brief or "").strip(),
             )
             active_store.put_bot(bot)
         except (TypeError, ValueError) as exc:
@@ -807,6 +810,7 @@ def create_app(
             effort=bot.effort if body.effort is None else body.effort.strip(),
             engine=bot.engine,
             mcp_servers=bot.mcp_servers,
+            brief=bot.brief if body.brief is None else body.brief.strip(),
         )
         active_store.put_bot(updated)
         applied_live = False
@@ -881,6 +885,7 @@ def create_app(
                     effort=bot.effort,
                     engine=bot.engine,
                     mcp_servers=bot.mcp_servers,
+                    brief=bot.brief,
                 )
             )
             _publish_roster("bots", "updated", name)
@@ -2175,6 +2180,7 @@ def _bot_payload(bot: Bot) -> dict[str, Any]:
         "model": bot.model,
         "effort": bot.effort,
         "engine": bot.engine,
+        "brief": bot.brief,
         "mcp_servers": _json_safe(bot.mcp_servers or []),
     }
 

@@ -524,6 +524,7 @@ class Engine:
                 effort=bot.effort,
                 engine=bot.engine,
                 mcp_servers=bot.mcp_servers,
+                brief=bot.brief,
             ),
         )
         worker = self._workers.get(bot_name)
@@ -691,10 +692,14 @@ class Engine:
             except Exception:
                 _logger.exception("Shared-memory retrieval failed for run %s", run.id)
         bot_names: tuple[str, ...] = ()
+        brief = ""
         if self._store is not None:
             try:
                 bots = await asyncio.to_thread(self._store.list_bots)
                 bot_names = tuple(bot.name for bot in bots)
+                own = next((bot for bot in bots if bot.name == run.bot_name), None)
+                if own is not None:
+                    brief = own.brief
             except Exception:
                 _logger.exception("Bot inventory retrieval failed for run %s", run.id)
         return compose_execution_prompt(
@@ -704,6 +709,7 @@ class Engine:
             # Only group-chat rounds may coordinate freely; every other surface
             # is a direct turn where unprompted delegation is forbidden.
             group_turn=run.actor == "group",
+            persona=brief,
         )
 
     async def _restore_all_queued(self) -> None:

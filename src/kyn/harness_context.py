@@ -101,7 +101,7 @@ def render_harness_context(
 
 
 _HARNESS_BLOCK = re.compile(
-    r"<kyn_control_plane>.*?</kyn_control_plane>|<caller_context>.*?</caller_context>",
+    r"<kyn_control_plane>.*?</kyn_control_plane>|<caller_context>.*?</caller_context>|<bot_brief>.*?</bot_brief>",
     re.DOTALL,
 )
 
@@ -129,10 +129,15 @@ def compose_execution_prompt(
     bot_names: Iterable[str] = (),
     memory_context: str = "",
     group_turn: bool = False,
+    persona: str = "",
 ) -> str:
     """Compose host instructions, optional evidence, and the unmodified request."""
 
-    blocks = [render_harness_context(bot_names, group_turn=group_turn)]
+    blocks = []
+    role = str(persona or "").strip()
+    if role:
+        blocks.append(f"<bot_brief>\n{role[:8000]}\n</bot_brief>")
+    blocks.append(render_harness_context(bot_names, group_turn=group_turn))
     if memory_context:
         blocks.append(memory_context)
     blocks.append(f"Current request:\n{request}")
