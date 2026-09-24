@@ -37,6 +37,9 @@ _DONE = re.compile(re.escape(DONE_MARKER), re.IGNORECASE)
 _TERMINAL_RUN_STATUS = {"complete", "failed", "cancelled"}
 _SUCCEEDED_RUN_STATUS = {"complete", "completed", "success", "succeeded"}
 
+REPLY_MODES = ("sequential", "parallel")
+DEFAULT_REPLY_MODE = "sequential"
+
 MAX_MEMBERS = 12
 MAX_ROUNDS = 10
 MAX_BUFFERED_MESSAGES = 500
@@ -59,6 +62,7 @@ class Group:
     error: str = ""
     speaker: str | None = None
     speaker_reason: str = ""
+    reply_mode: str = DEFAULT_REPLY_MODE
 
     def summary(self) -> dict[str, Any]:
         return {
@@ -71,6 +75,7 @@ class Group:
             "error": self.error,
             "speaker": self.speaker,
             "speaker_reason": self.speaker_reason,
+            "reply_mode": self.reply_mode,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }
@@ -145,12 +150,14 @@ class GroupStore:
         members: Sequence[str],
         *,
         max_rounds: int = 2,
+        reply_mode: str = DEFAULT_REPLY_MODE,
         group_id: str | None = None,
     ) -> Group:
         label = _require_label(name, "name", 100)
         goal = _require_label(aim, "aim", 4_000)
         roster = _clean_members(members)
         rounds = _require_rounds(max_rounds)
+        mode = _require_reply_mode(reply_mode)
         identifier = (group_id or uuid.uuid4().hex).strip()
         if not identifier:
             raise ValueError("group id must not be empty")
@@ -159,14 +166,25 @@ class GroupStore:
             db.execute(
                 """
                 INSERT INTO groups(id, name, aim, members_json, max_rounds, status, error,
-                                   created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, 'idle', '', ?, ?)
+                                   reply_mode, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, 'idle', '', ?, ?, ?)
                 """,
-                (identifier, label, goal, json.dumps(roster), rounds, now, now),
+                (identifier, label, goal, json.dumps(roster), rounds, mode, now, now),
             )
         group = self.get_group(identifier)
         assert group is not None
         return group
+
+    def set_reply_mode(self, group_id: str, mode: str) -> Group:
+        """Switch a group between sequential turns and parallel fan-out."""
+        cleaned = _require_reply_mode(mode)
+        self.require_group(group_id)
+        with self.store.connect() as db:
+            db.execute(
+                "UPDATE groups SET reply_mode = ?, updated_at = ? WHERE id = ?",
+                (cleaned, _now(), group_id),
+            )
+        return self.require_group(group_id)
 
     def get_group(self, group_id: str) -> Group | None:
         with self.store.connect() as db:
@@ -289,11 +307,12 @@ class GroupStore:
                     updated_at TEXT NOT NULL,
                     context_note TEXT NOT NULL DEFAULT '',
                     speaker TEXT,
-                    speaker_reason TEXT NOT NULL DEFAULT ''
+                    speaker_reason TEXT NOT NULL DEFAULT '',
+                    reply_mode TEXT NOT NULL DEFAULT 'sequential'
                 );
             """
             )
-            # Databases created before the brief/presence columns existed.
+            # Databases created before the brief/presence/mode columns existed.
             existing = {
                 str(row["name"])
                 for row in db.execute("PRAGMA table_info(groups)").fetchall()
@@ -307,6 +326,10 @@ class GroupStore:
             if "speaker_reason" not in existing:
                 db.execute(
                     "ALTER TABLE groups ADD COLUMN speaker_reason TEXT NOT NULL DEFAULT ''"
+                )
+            if "reply_mode" not in existing:
+                db.execute(
+                    "ALTER TABLE groups ADD COLUMN reply_mode TEXT NOT NULL DEFAULT 'sequential'"
                 )
             db.executescript(
                 """
@@ -354,7 +377,7 @@ class GroupCoordinator:
         self.turn_budget = int(turn_budget)
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._stops: set[str] = set()
-        self._speaking: dict[str, tuple[str, str]] = {}
+        self._speaking: dict[str, dict[str, str]] = {}
         self._speakers: dict[str, tuple[str, str]] = {}
         self._closed = False
 
@@ -364,13 +387,20 @@ class GroupCoordinator:
         task = self._tasks.get(group_id)
         return task is not None and not task.done()
 
-    def speaking(self, group_id: str) -> dict[str, str]:
-        """Who is composing a reply right now, if anyone."""
+    def speaking(self, group_id: str) -> dict[str, Any]:
+        """Who is composing a reply right now, if anyone.
+
+        ``bots`` lists every in-flight speaker (parallel rounds); ``bot``
+        keeps the first one for single-speaker readers.
+        """
         current = self._speaking.get(group_id)
-        if current is None:
+        if not current:
             return {}
-        member, run_id = current
-        return {"bot": member, "run_id": run_id}
+        speakers = [
+            {"bot": member, "run_id": run_id}
+            for member, run_id in current.items()
+        ]
+        return {"bot": speakers[0]["bot"], "run_id": speakers[0]["run_id"], "bots": speakers}
 
     async def start(self, group_id: str, *, rounds: int | None = None) -> Group:
         """Start (or continue) a group chat in the background."""
@@ -422,9 +452,10 @@ class GroupCoordinator:
     async def stop(self, group_id: str) -> Group:
         self.service.require_group(group_id)
         self._stops.add(group_id)
-        current = self._speaking.get(group_id)
-        if self.cancel is not None and current is not None:
-            await _ignore_errors(self.cancel(current[1]))
+        current = self._speaking.get(group_id, {})
+        if self.cancel is not None:
+            for run_id in list(current.values()):
+                await _ignore_errors(self.cancel(run_id))
         task = self._tasks.get(group_id)
         if task is not None and not task.done():
             await asyncio.gather(task, return_exceptions=True)
@@ -490,6 +521,14 @@ class GroupCoordinator:
                         return
                     self.service.set_status(group.id, "idle")
                     return
+                if single_speaker is None and self._reply_mode(group) == "parallel":
+                    outcome = await self._run_parallel_round(group, round_index + 1)
+                    if outcome == "done":
+                        met = True
+                        return
+                    if outcome == "halt":
+                        return
+                    continue
                 for member in group.members:
                     if group.id in self._stops:
                         return
@@ -540,16 +579,89 @@ class GroupCoordinator:
             if met:
                 self._stops.discard(group.id)
 
+    def _reply_mode(self, group: Group) -> str:
+        """This round's fan-out mode, re-read so a toggle applies mid-run."""
+        try:
+            return self.service.require_group(group.id).reply_mode
+        except GroupNotFound:
+            return group.reply_mode
+
+    async def _run_parallel_round(self, group: Group, round_number: int) -> str:
+        """Fan one round out to every member at once.
+
+        Returns ``"done"`` when a reply closes the aim, ``"halt"`` when the
+        loop must stop (stop requested / turn budget spent), else ``"next"``.
+        Prompts are all built before any run starts, so every member shares
+        the same transcript snapshot: same-round replies stay invisible to
+        each other by design.
+        """
+        override = self._speakers.pop(group.id, None)
+        if override is not None:
+            speaker, reason = override
+            self.service.set_speaker(group.id, speaker, reason)
+            replied, spoken = await self._speak(group, speaker, round_number, reason=reason)
+            self.service.set_speaker(group.id, None, "")
+            if replied and _DONE.search(spoken):
+                self._mark_done(group, speaker)
+                return "done"
+            self.service.set_status(group.id, "idle")
+            return "halt"
+        if group.id in self._stops:
+            return "halt"
+        if self.service.count_messages(group.id) >= self.turn_budget:
+            self.service.add_message(
+                group.id,
+                "kyn",
+                "system",
+                f"Turn budget of {self.turn_budget} messages reached. "
+                "Send a message to continue.",
+            )
+            return "halt"
+        prompts = {
+            member: self._prompt(group, member, round_number, parallel=True)
+            for member in group.members
+        }
+        results = await asyncio.gather(
+            *(
+                self._speak(group, member, round_number, prompt=prompts[member], parallel=True)
+                for member in group.members
+            )
+        )
+        for member, (replied, spoken) in zip(group.members, results):
+            if replied and _DONE.search(spoken):
+                self._mark_done(group, member)
+                return "done"
+        return "next"
+
+    def _mark_done(self, group: Group, speaker: str) -> None:
+        self.service.add_message(
+            group.id,
+            "kyn",
+            "system",
+            f"{speaker} marked the shared aim as met. Pause here or keep going.",
+        )
+        self.service.set_status(group.id, "done")
+
     async def _speak(
-        self, group: Group, member: str, round_index: int, *, reason: str = ""
+        self,
+        group: Group,
+        member: str,
+        round_index: int,
+        *,
+        reason: str = "",
+        prompt: str | None = None,
+        parallel: bool = False,
     ) -> tuple[bool, str]:
         """Prompt one member, wait for its run, and record the reply.
 
         Returns ``(replied, text)``. A failed member leaves a system note and
         reports ``replied=False`` so the round continues with the next bot.
         ``reason`` marks a directed turn — currently ``"mentioned"``.
+        Pass a prebuilt ``prompt`` when several members must share one
+        transcript snapshot (parallel rounds).
         """
-        prompt = self._prompt(group, member, round_index, reason=reason)
+        if prompt is None:
+            prompt = self._prompt(group, member, round_index, reason=reason, parallel=parallel)
         try:
             run_id = str(await self._submit(member, prompt) or "")
         except Exception as exc:
@@ -557,7 +669,7 @@ class GroupCoordinator:
                 group.id, "kyn", "system", f"{member} could not start: {_error(exc)}"
             )
             return False, ""
-        self._speaking[group.id] = (member, run_id)
+        self._speaking.setdefault(group.id, {})[member] = run_id
         try:
             snapshot = await self._wait(run_id)
         except Exception as exc:
@@ -566,7 +678,11 @@ class GroupCoordinator:
             )
             return False, ""
         finally:
-            self._speaking.pop(group.id, None)
+            current = self._speaking.get(group.id)
+            if current is not None:
+                current.pop(member, None)
+                if not current:
+                    self._speaking.pop(group.id, None)
 
         status = str(snapshot.get("status", "")).lower()
         if status and status not in _SUCCEEDED_RUN_STATUS:
@@ -588,19 +704,31 @@ class GroupCoordinator:
 
     # ---- prompts ----------------------------------------------------------
 
-    def _prompt(self, group: Group, member: str, round_index: int, *, reason: str = "") -> str:
+    def _prompt(
+        self, group: Group, member: str, round_index: int, *, reason: str = "", parallel: bool = False
+    ) -> str:
         everyone = ", ".join(group.members)
         others = ", ".join(name for name in group.members if name != member) or "the operator"
         transcript = self._transcript(group, member)
         brief = self.service.context_note(group.id)
-        directive = (
-            "The operator @-mentioned you. Reply to them directly and address only "
-            "what they asked; no other bot will speak in this turn."
-            if reason == "mentioned"
-            else f"Write your next message as {member}. Address {'the others' if others else 'the operator'} "
-            f"({others}) by name, build on what they actually said, and be concrete about what you will do "
-            "next."
-        )
+        if reason == "mentioned":
+            directive = (
+                "The operator @-mentioned you. Reply to them directly and address only "
+                "what they asked; no other bot will speak in this turn."
+            )
+        elif parallel:
+            directive = (
+                f"Write your message as {member}. The other members ({others}) are replying "
+                "at the same time from this same transcript, so respond to what is already "
+                "said, keep your message self-contained, and be concrete about what you "
+                "will do next — nobody sees your reply until the next round."
+            )
+        else:
+            directive = (
+                f"Write your next message as {member}. Address {'the others' if others else 'the operator'} "
+                f"({others}) by name, build on what they actually said, and be concrete about what you will do "
+                "next."
+            )
         return (
             f'You are "{member}" in the group chat "{group.name}".\n'
             f"Shared aim: {group.aim}\n"
@@ -743,6 +871,13 @@ def _clean_members(members: Sequence[str]) -> list[str]:
     return seen
 
 
+def _require_reply_mode(value: Any) -> str:
+    mode = str(value or "").strip().lower()
+    if mode not in REPLY_MODES:
+        raise ValueError(f"reply_mode must be one of {', '.join(REPLY_MODES)}")
+    return mode
+
+
 def _require_rounds(value: Any) -> int:
     try:
         rounds = int(value)
@@ -799,6 +934,9 @@ def _group(row: Any) -> Group:
         error=str(row["error"] or ""),
         speaker=str(row["speaker"]) if "speaker" in keys and row["speaker"] else None,
         speaker_reason=str(row["speaker_reason"]) if "speaker_reason" in keys else "",
+        reply_mode=str(row["reply_mode"])
+        if "reply_mode" in keys and row["reply_mode"]
+        else DEFAULT_REPLY_MODE,
     )
 
 def _message(row: Any) -> GroupMessage:

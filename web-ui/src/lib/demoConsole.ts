@@ -280,6 +280,7 @@ export const DEMO_GROUP_DETAIL: GroupDetail = {
     aim: "Ship the 0.4 release notes with one verified changelog entry per merged pull request.",
     members: ["builder", "reviewer", "triage"],
     max_rounds: 3,
+    reply_mode: "sequential",
     status: "done",
     running: false,
     message_count: 6,

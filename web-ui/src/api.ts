@@ -278,9 +278,15 @@ export const api = {
     aim: string;
     members: string[];
     max_rounds?: number;
+    reply_mode?: string;
     start?: boolean;
   }) =>
     request<GroupDetail>("/api/groups", { method: "POST", body: JSON.stringify(payload) }),
+  setGroupMode: (id: string, mode: string) =>
+    request<GroupDetail>(`/api/groups/${encodeURIComponent(id)}/mode`, {
+      method: "PUT",
+      body: JSON.stringify({ mode }),
+    }),
   postGroupMessage: (id: string, text: string, respond = true, mentions: string[] = []) =>
     request<{ message: GroupMessage; group: GroupDetail }>(
       `/api/groups/${encodeURIComponent(id)}/messages`,

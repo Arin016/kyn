@@ -5238,7 +5238,8 @@ details summary {
 }
 
 .group-aim {
-  margin: 12px 26px 0;
+  margin: 12px auto 0;
+  max-width: min(820px, calc(100% - 52px));
   padding: 10px 14px;
   border-radius: var(--r-md);
   border: 1px dashed var(--hairline);
@@ -5249,7 +5250,8 @@ details summary {
 }
 
 .group-error {
-  margin: 10px 26px 0;
+  margin: 10px auto 0;
+  max-width: min(820px, calc(100% - 52px));
   font-size: 0.75rem;
   color: var(--fg);
 }

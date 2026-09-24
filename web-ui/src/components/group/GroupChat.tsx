@@ -151,11 +151,17 @@ export function GroupChat({
   useEffect(() => {
     const node = scrollRef.current;
     if (node) node.scrollTop = node.scrollHeight;
-  }, [messages, detail?.speaking?.bot]);
+  }, [messages, detail?.speaking]);
 
   const group = detail?.group;
   const running = Boolean(detail?.running);
-  const speaking = detail?.speaking?.bot || "";
+  const speakers = useMemo(() => {
+    const presence = detail?.speaking;
+    if (presence?.bots && presence.bots.length > 0)
+      return presence.bots.map((entry) => entry.bot).filter(Boolean);
+    return presence?.bot ? [presence.bot] : [];
+  }, [detail?.speaking]);
+  const parallel = (group?.reply_mode || "sequential") === "parallel";
   const memberNames = useMemo(() => group?.members || [], [group?.members]);
 
   const roster = useMemo(() => {
@@ -255,6 +261,22 @@ export function GroupChat({
     [groupId, marketing, showToast],
   );
 
+  const setMode = useCallback(
+    async (mode: string) => {
+      if (marketing) {
+        showToast("Demo preview — reply mode needs a local daemon.", false);
+        return;
+      }
+      try {
+        setDetail(await api.setGroupMode(groupId, mode));
+        onChanged();
+      } catch (exc) {
+        showToast((exc as Error).message || "Could not switch reply mode", true);
+      }
+    },
+    [groupId, marketing, onChanged, showToast],
+  );
+
   const start = useCallback(async () => {
     if (marketing) {
       showToast("Demo preview — group rounds need a local daemon.", false);
@@ -345,11 +367,13 @@ export function GroupChat({
               data-state={running ? "running" : "idle"}
             >
               <span className="status-dot" aria-hidden />
-              {speaking
-                ? `${speaking} is replying`
-                : !running && group?.speaker
-                  ? `${group.speaker} was asked to reply`
-                  : STATUS_LABEL[status] || status}
+              {speakers.length > 1
+                ? `${speakers.join(", ")} are replying`
+                : speakers.length === 1
+                  ? `${speakers[0]} is replying`
+                  : !running && group?.speaker
+                    ? `${group.speaker} was asked to reply`
+                    : STATUS_LABEL[status] || status}
             </span>
             <span className="group-count">
               {roster.length} bot{roster.length === 1 ? "" : "s"}
@@ -358,6 +382,19 @@ export function GroupChat({
         </div>
 
         <div className="group-actions">
+          <button
+            type="button"
+            className="mini-ghost"
+            aria-pressed={parallel}
+            title={
+              parallel
+                ? "Parallel: every member replies at once"
+                : "Sequential: members take turns replying"
+            }
+            onClick={() => void setMode(parallel ? "sequential" : "parallel")}
+          >
+            {parallel ? "Parallel" : "Sequential"}
+          </button>
           <button
             type="button"
             className={`mini-ghost group-context-toggle${hasPinnedContext ? " is-pinned" : ""}`}
@@ -494,31 +531,32 @@ export function GroupChat({
               </li>
             );
           })}
-          {speaking ? (
-            <li className="group-msg">
+          {speakers.map((name) => (
+            <li className="group-msg" key={`typing-${name}`}>
               <BotAvatar
-                name={speaking}
+                name={name}
                 size={32}
                 className="group-msg-avatar thinking-avatar"
               />
               <div className="group-msg-body">
                 <span className="group-msg-meta">
-                  <strong>{speaking}</strong>
+                  <strong>{name}</strong>
                   <span>typing</span>
                 </span>
                 <div
                   className="group-bubble is-typing"
-                  aria-label={`${speaking} is typing`}
+                  aria-label={`${name} is typing`}
                 >
                   <ThinkingDots />
                 </div>
               </div>
             </li>
-          ) : null}
-          {messages.length === 0 && !speaking ? (
+          ))}
+          {messages.length === 0 && speakers.length === 0 ? (
             <li className="group-note">
-              No messages yet. Start a round and the bots will take turns
-              working the shared aim.
+              {parallel
+                ? "No messages yet. Start a round and every bot replies at once."
+                : "No messages yet. Start a round and the bots will take turns working the shared aim."}
             </li>
           ) : null}
         </ol>

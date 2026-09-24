@@ -143,6 +143,93 @@ def test_done_marker_stops_the_group(store: Store) -> None:
     assert [name for name, _ in engine.prompts] == ["scout", "writer"]
 
 
+def test_reply_mode_defaults_and_validates(store: Store) -> None:
+    service = GroupStore(store)
+    group = service.create_group("Room", "aim", ["scout"])
+    assert group.reply_mode == "sequential"
+
+    updated = service.set_reply_mode(group.id, "parallel")
+    assert updated.reply_mode == "parallel"
+    assert service.get_group(group.id).reply_mode == "parallel"
+
+    with pytest.raises(ValueError):
+        service.set_reply_mode(group.id, "relay")
+    with pytest.raises(ValueError):
+        service.create_group("Room", "aim", ["scout"], reply_mode="relay")
+    with pytest.raises(GroupNotFound):
+        service.set_reply_mode("missing", "parallel")
+
+
+def test_parallel_round_fans_out_from_one_snapshot(store: Store) -> None:
+    add_bots(store, "scout", "writer")
+    engine = ScriptedEngine({"scout": ["Scout found one blocker."], "writer": ["Writer drafted notes."]})
+    coordinator = make_coordinator(store, engine)
+    group = coordinator.service.create_group(
+        "Room", "Summarize blockers", ["scout", "writer"], max_rounds=1, reply_mode="parallel"
+    )
+
+    asyncio.run(_run_once(coordinator, group.id))
+
+    messages = coordinator.service.messages(group.id)
+    assert [message.author for message in messages] == ["scout", "writer"]
+    assert coordinator.service.get_group(group.id).status == "idle"
+
+    # Both members shared one transcript snapshot: neither prompt carries
+    # the other member's same-round reply.
+    prompts = {name: text for name, text in engine.prompts}
+    assert "Writer drafted notes." not in prompts["scout"]
+    assert "Scout found one blocker." not in prompts["writer"]
+    assert "at the same time" in prompts["scout"]
+
+
+def test_parallel_done_marker_stops_the_group(store: Store) -> None:
+    add_bots(store, "scout", "writer")
+    engine = ScriptedEngine({"scout": ["All green."], "writer": [f"Ship it.\n{DONE_MARKER}"]})
+    coordinator = make_coordinator(store, engine)
+    group = coordinator.service.create_group(
+        "Room", "aim", ["scout", "writer"], max_rounds=3, reply_mode="parallel"
+    )
+
+    asyncio.run(_run_once(coordinator, group.id))
+
+    assert coordinator.service.get_group(group.id).status == "done"
+    assert "aim as met" in coordinator.service.messages(group.id)[-1].text
+
+
+def test_parallel_speaking_lists_everyone_and_stop_cancels_all(store: Store) -> None:
+    add_bots(store, "scout", "writer")
+    engine = ScriptedEngine()
+    started = asyncio.Event()
+
+    async def blocking_wait(run_id: str) -> Mapping[str, Any]:
+        started.set()
+        await asyncio.sleep(30)
+        return {"status": "complete", "events": [{"kind": "text", "text": "late"}]}
+
+    coordinator = GroupCoordinator(
+        GroupStore(store), engine.submit, blocking_wait, cancel=engine.cancel
+    )
+    group = coordinator.service.create_group(
+        "Room", "aim", ["scout", "writer"], max_rounds=1, reply_mode="parallel"
+    )
+
+    async def scenario() -> None:
+        await coordinator.start(group.id)
+        for _ in range(100):
+            if len(coordinator.speaking(group.id).get("bots", [])) == 2:
+                break
+            await asyncio.sleep(0.02)
+        presence = coordinator.speaking(group.id)
+        assert [entry["bot"] for entry in presence["bots"]] == ["scout", "writer"]
+        await coordinator.stop(group.id)
+
+    asyncio.run(scenario())
+
+    assert sorted(engine.cancelled) == ["run-1", "run-2"]
+    assert coordinator.is_running(group.id) is False
+    assert coordinator.service.get_group(group.id).status == "stopped"
+
+
 def test_failed_member_becomes_a_system_note(store: Store) -> None:
     add_bots(store, "scout", "writer")
 
@@ -330,6 +417,60 @@ def test_group_endpoints_drive_a_full_round(tmp_path) -> None:
         assert client.post(f"/api/groups/{group_id}/stop").json()["group"]["status"] == "stopped"
         assert client.delete(f"/api/groups/{group_id}").json()["deleted"] is True
         assert client.get(f"/api/groups/{group_id}").status_code == 404
+
+
+def test_group_mode_endpoint_switches_fan_out(tmp_path) -> None:
+    fastapi = pytest.importorskip("fastapi")
+    pytest.importorskip("starlette")
+    from fastapi.testclient import TestClient
+
+    from kyn.server import create_app
+
+    store = Store(tmp_path / "kyn")
+    add_bots(store, "scout", "writer")
+
+    class TextEngine(ScriptedEngine):
+        async def start(self) -> None:  # pragma: no cover - lifecycle no-op
+            return None
+
+        async def close(self) -> None:  # pragma: no cover - lifecycle no-op
+            return None
+
+        async def get_run(self, run_id: str) -> Mapping[str, Any] | None:
+            return self.runs.get(run_id)
+
+        async def subscribe(self, run_id: str, after: int = 0) -> Any:
+            for event in self.runs[run_id]["events"]:
+                yield event
+            self.runs[run_id]["status"] = "complete"
+
+    engine = TextEngine({"scout": ["Blockers listed."], "writer": ["Notes drafted."]})
+    app = create_app(store, engine)
+
+    with TestClient(app) as client:
+        created = client.post(
+            "/api/groups",
+            json={"name": "Launch", "aim": "Ship notes", "members": ["scout", "writer"], "max_rounds": 1},
+        )
+        assert created.status_code == 201
+        assert created.json()["group"]["reply_mode"] == "sequential"
+        group_id = created.json()["group"]["id"]
+
+        switched = client.put(f"/api/groups/{group_id}/mode", json={"mode": "parallel"})
+        assert switched.status_code == 200
+        assert switched.json()["group"]["reply_mode"] == "parallel"
+
+        assert client.put(f"/api/groups/{group_id}/mode", json={"mode": "relay"}).status_code == 422
+        assert client.put("/api/groups/missing/mode", json={"mode": "parallel"}).status_code == 404
+
+        payload = client.get(f"/api/groups/{group_id}").json()
+        for _ in range(100):
+            if payload["group"]["status"] != "running":
+                break
+            time.sleep(0.02)
+            payload = client.get(f"/api/groups/{group_id}").json()
+        assert payload["group"]["status"] == "idle"
+        assert [message["author"] for message in payload["messages"]] == ["scout", "writer"]
 
 
 def test_group_endpoints_reject_unknown_bots(tmp_path) -> None:

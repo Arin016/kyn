@@ -62,6 +62,8 @@ export interface Group {
   aim: string;
   members: string[];
   max_rounds: number;
+  /** "sequential" (take turns) or "parallel" (everyone replies at once). */
+  reply_mode: string;
   status: string;
   error?: string;
   created_at?: string;
@@ -92,7 +94,7 @@ export interface GroupDetail {
   members: Bot[];
   messages: GroupMessage[];
   running: boolean;
-  speaking: { bot?: string; run_id?: string };
+  speaking: { bot?: string; run_id?: string; bots?: { bot: string; run_id?: string }[] };
   /** Pinned handoff brief every member sees above the transcript. */
   context_note?: string;
 }

@@ -335,6 +335,7 @@ if FastAPI is not None:
         aim: str = Field(min_length=1, max_length=4_000)
         members: list[str] = Field(min_length=1, max_length=12)
         max_rounds: int = Field(default=2, ge=1, le=10)
+        reply_mode: str = Field(default="sequential", min_length=1, max_length=16)
         start: bool = True
 
 
@@ -345,6 +346,10 @@ if FastAPI is not None:
 
     class GroupContextBody(BaseModel):
         note: str = Field(default="", max_length=4_000)
+
+
+    class GroupModeBody(BaseModel):
+        mode: str = Field(min_length=1, max_length=16)
 
 
 def create_app(
@@ -2112,6 +2117,7 @@ def create_app(
                 body.aim,
                 body.members,
                 max_rounds=body.max_rounds,
+                reply_mode=body.reply_mode,
             )
         except (TypeError, ValueError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -2144,6 +2150,16 @@ def create_app(
         """Pin or clear the handoff brief every member of the group sees."""
         try:
             group = await asyncio.to_thread(active_groups.set_context_note, group_id, body.note)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        _publish_roster("groups", "updated", group.id)
+        return _group_payload(group.id)
+
+    @app.put("/api/groups/{group_id}/mode")
+    async def set_group_mode(group_id: str, body: GroupModeBody) -> dict[str, Any]:
+        """Switch a group between sequential turns and parallel fan-out."""
+        try:
+            group = await asyncio.to_thread(active_groups.set_reply_mode, group_id, body.mode)
         except (TypeError, ValueError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         _publish_roster("groups", "updated", group.id)
