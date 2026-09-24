@@ -124,14 +124,17 @@ if FastAPI is not None:
 
 
     class PolicyBody(BaseModel):
-        approval_mode: str = "ask"
-        allowed_tools: list[str] = Field(default_factory=list)
-        denied_tools: list[str] = Field(default_factory=list)
-        max_turns_per_hour: int = Field(default=0, ge=0)
-        max_concurrent_runs: int = Field(default=0, ge=0)
-        max_daily_runs: int = Field(default=0, ge=0)
-        auto_failover: bool = False
-        failover_engines: list[str] = Field(default_factory=list)
+        # All fields are optional: a PUT merges onto the stored policy, so a
+        # client that only manages approvals cannot wipe failover (or quota)
+        # settings it never sent.
+        approval_mode: str | None = None
+        allowed_tools: list[str] | None = None
+        denied_tools: list[str] | None = None
+        max_turns_per_hour: int | None = Field(default=None, ge=0)
+        max_concurrent_runs: int | None = Field(default=None, ge=0)
+        max_daily_runs: int | None = Field(default=None, ge=0)
+        auto_failover: bool | None = None
+        failover_engines: list[str] | None = None
 
 
     class CreateRoutineBody(BaseModel):
@@ -845,15 +848,16 @@ def create_app(
     async def put_policy(name: str, body: PolicyBody) -> dict[str, Any]:
         _require_bot(active_store, name)
         try:
+            current = active_governance.get_policy(name)
             policy = Policy(
-                approval_mode=body.approval_mode,  # type: ignore[arg-type]
-                allowed_tools=tuple(body.allowed_tools),
-                denied_tools=tuple(body.denied_tools),
-                max_turns_per_hour=body.max_turns_per_hour,
-                max_concurrent_runs=body.max_concurrent_runs,
-                max_daily_runs=body.max_daily_runs,
-                auto_failover=body.auto_failover,
-                failover_engines=tuple(body.failover_engines),
+                approval_mode=body.approval_mode if body.approval_mode is not None else current.approval_mode,  # type: ignore[arg-type]
+                allowed_tools=tuple(body.allowed_tools) if body.allowed_tools is not None else current.allowed_tools,
+                denied_tools=tuple(body.denied_tools) if body.denied_tools is not None else current.denied_tools,
+                max_turns_per_hour=body.max_turns_per_hour if body.max_turns_per_hour is not None else current.max_turns_per_hour,
+                max_concurrent_runs=body.max_concurrent_runs if body.max_concurrent_runs is not None else current.max_concurrent_runs,
+                max_daily_runs=body.max_daily_runs if body.max_daily_runs is not None else current.max_daily_runs,
+                auto_failover=body.auto_failover if body.auto_failover is not None else current.auto_failover,
+                failover_engines=tuple(body.failover_engines) if body.failover_engines is not None else current.failover_engines,
             )
             return _json_safe(active_governance.set_policy(name, policy))
         except (TypeError, ValueError) as exc:
@@ -863,25 +867,41 @@ def create_app(
     async def bot_usage(
         name: str, limit: int = Query(default=50, ge=1, le=500)
     ) -> dict[str, Any]:
+        """Aggregate ACP usage snapshots for a bot.
+
+        ACP semantics: per session, ``used`` is the tokens currently in the
+        context window (a snapshot, NOT a consumption counter) and ``cost`` is
+        the cumulative session spend. Snapshots repeat every turn, so summing
+        them would double count — we take the LAST snapshot per session and
+        report the max across the bot's sessions.
+        """
         _require_bot(active_store, name)
         turns = await asyncio.to_thread(active_store.history, name, limit)
-        tokens = 0
-        cost = 0.0
+        last_tokens_per_session: dict[str, int] = {}
+        last_cost_per_session: dict[str, float] = {}
         for turn in turns:
+            session_key = str(turn.get("session_id") or turn.get("id") or "")
             for event in turn.get("events", []):
                 raw = event.get("raw") if isinstance(event.get("raw"), dict) else {}
                 update = ((raw.get("params") or {}).get("update") or {})
                 if update.get("sessionUpdate") != "usage_update":
                     continue
                 try:
-                    tokens += int(update.get("used") or 0)
-                    cost += float((update.get("cost") or {}).get("amount") or 0)
+                    tokens = int(update.get("used") or 0)
+                    cost = float((update.get("cost") or {}).get("amount") or 0)
                 except (TypeError, ValueError):
                     continue
+                # Chronological history: the last snapshot per session wins.
+                last_tokens_per_session[session_key] = tokens
+                last_cost_per_session[session_key] = cost
+        tokens = max(last_tokens_per_session.values(), default=0)
+        cost = max(last_cost_per_session.values(), default=0.0)
         return {
             "bot": name,
             "turns": len(turns),
+            "sessions": len(last_tokens_per_session),
             "tokens": tokens,
+            "tokens_in_context": tokens,
             "cost": {"amount": round(cost, 4), "currency": "USD"},
         }
 
