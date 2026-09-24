@@ -13,6 +13,8 @@ interface Props {
   commands?: SlashCommand[];
   /** Present → typing `@` opens member autocomplete. */
   members?: string[];
+  /** External draft (turn Edit action): applied + focused on change. */
+  draft?: { text: string; nonce: number } | null;
 }
 
 interface SlashState {
@@ -38,6 +40,7 @@ export function Composer({
   onStop,
   commands,
   members,
+  draft,
 }: Props) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -59,6 +62,18 @@ export function Composer({
   useEffect(() => {
     resize();
   }, []);
+
+  // External draft (turn Edit action): fill, refocus, and let the operator
+  // review before sending — rerun stays a conscious act, not a blind replay.
+  useEffect(() => {
+    if (!draft) return;
+    const node = inputRef.current;
+    if (node) node.value = draft.text;
+    setValue(draft.text);
+    resize();
+    node?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft?.nonce]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {

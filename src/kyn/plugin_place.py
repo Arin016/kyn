@@ -304,6 +304,8 @@ def install_template(
     for name in names:
         if store.get_bot(name) is None:
             raise PlaceError(f"bot {name!r} does not exist")
+    plugin_id = str(template["id"])
+    existing = registry.get_plugin(plugin_id)
     values = {str(key): str(config.get(key) or "") for key in (config or {})}
     schema = {str(item.get("key") or ""): item for item in template["config_schema"]}
     for key in values:
@@ -316,7 +318,7 @@ def install_template(
         # Required non-secrets block the install; required secrets may come
         # later (Plugin Place secrets field or daemon env) and are reported
         # as missing instead.
-        if item.get("required") and not value and key not in secret_keys:
+        if item.get("required") and not value and key not in secret_keys and existing is None:
             raise PlaceError(f"config {key!r} is required")
         if value:
             applied[key] = value
@@ -337,7 +339,7 @@ def install_template(
         if not str(raw).startswith("env:"):
             raise PlaceError(f"template {template['id']!r} has a non-reference env value")
     args = [substitute(str(part)) for part in template["args"]]
-    if any(not part for part in args):
+    if any(not part for part in args) and existing is None:
         raise PlaceError("a required config value is missing for the server command")
     # Optional config left empty (and absent from the daemon environment) is
     # dropped so the server's own defaults apply instead of an empty value.
@@ -357,8 +359,6 @@ def install_template(
             continue
         env[str(target)] = str(raw)
 
-    plugin_id = str(template["id"])
-    existing = registry.get_plugin(plugin_id)
     if existing is None:
         registry.create_plugin(
             plugin_id=plugin_id,

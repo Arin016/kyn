@@ -1,14 +1,17 @@
 import { memo, useEffect, useState } from "react";
 import { BotAvatar } from "../BotAvatar";
 import { StableProse } from "./markdown";
+import { splitMentions } from "../../lib/slash";
 
 export type Part =
-  | { type: "user"; text: string }
+  | { type: "user"; text: string; mentions?: string[] }
   | { type: "channel"; text: string; label: string }
   | { type: "assistant-text"; text: string; streaming?: boolean }
   | { type: "reasoning"; id: string; text: string; running: boolean }
   | { type: "tool"; id: string; title: string; status: "running" | "done" | "error"; detail?: string; repeat?: number }
   | { type: "approval"; id: string; title: string }
+  | { type: "usage"; id: string; tokens: number; cost: number }
+  | { type: "note"; text: string }
   | { type: "error"; text: string };
 
 interface PartProps {
@@ -245,7 +248,19 @@ const MessagePartInner = ({ part, onApproval, botName }: PartProps) => {
     case "user":
       return (
         <div className="user-row">
-          <div className="user-bubble">{part.text}</div>
+          <div className="user-bubble">
+            {part.mentions && part.mentions.length > 0 ? (
+              splitMentions(part.text, part.mentions).map((segment, index) =>
+                segment.kind === "mention" ? (
+                  <span key={index} className="mention-chip">@{segment.value}</span>
+                ) : (
+                  <span key={index}>{segment.value}</span>
+                ),
+              )
+            ) : (
+              part.text
+            )}
+          </div>
         </div>
       );
 
@@ -262,7 +277,7 @@ const MessagePartInner = ({ part, onApproval, botName }: PartProps) => {
     case "assistant-text":
       return (
         <div className="msg-part assistant-row">
-          <BotAvatar name={botName || "kyn"} size={30} className="msg-avatar" />
+          <BotAvatar name={botName || "ari"} size={30} className="msg-avatar" />
           <div className="assistant-body">
             <div className={`assistant-part${part.streaming ? " streaming" : ""}`}>
               <StableProse text={part.text} streaming={part.streaming} />
@@ -293,7 +308,7 @@ const MessagePartInner = ({ part, onApproval, botName }: PartProps) => {
     case "approval":
       return (
         <div className="msg-part msg-gutter approval-card">
-          <p className="approval-title">{part.title || "Kiro needs permission to continue."}</p>
+          <p className="approval-title">{part.title || "This bot needs permission to continue."}</p>
           <div className="approval-buttons">
             <button type="button" className="btn-approve" onClick={() => onApproval?.(part.id, "once")}>
               Allow once
@@ -302,6 +317,24 @@ const MessagePartInner = ({ part, onApproval, botName }: PartProps) => {
               Deny
             </button>
           </div>
+        </div>
+      );
+
+    case "usage":
+      // Belt and braces: a zero/zero snapshot must never paint a pill.
+      if (part.tokens === 0 && part.cost === 0) return null;
+      return (
+        <div className="msg-part msg-usage" aria-label="Session usage">
+          <span className="msg-usage-tok">{part.tokens.toLocaleString()} tok in context</span>
+          <span className="msg-usage-sep" aria-hidden>·</span>
+          <span className="msg-usage-cost">${part.cost.toFixed(4)}</span>
+        </div>
+      );
+
+    case "note":
+      return (
+        <div className="msg-part msg-usage" role="status">
+          <span>{part.text}</span>
         </div>
       );
 

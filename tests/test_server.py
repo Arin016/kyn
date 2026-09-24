@@ -134,6 +134,18 @@ def test_durable_interaction_routes_survive_stream_reconnect(tmp_path: Path) -> 
         assert engine.decisions == [("run-1", "permission-7", "once")]
         assert decided.json()["status"] == "resolved"
 
+
+def test_run_list_route_returns_engine_summaries(tmp_path: Path) -> None:
+    class ListingEngine(FakeEngine):
+        async def list_runs(self, *, limit: int) -> list[dict[str, Any]]:
+            return [{"id": "run-new", "bot_name": "builder", "status": "running"}][:limit]
+
+    app = create_app(Store(tmp_path / "store"), ListingEngine())
+    with _test_client(app) as client:
+        response = client.get("/api/runs?limit=2")
+        assert response.status_code == 200
+        assert response.json() == [{"id": "run-new", "bot_name": "builder", "status": "running"}]
+
 def _test_client(app: Any) -> Any:
     try:
         from fastapi.testclient import TestClient
@@ -632,6 +644,8 @@ def test_tasks_create_list_merge_guards_and_abandon(tmp_path: Path) -> None:
         assert task["branch"].startswith("kyn/task-")
         assert task["base"] == "main"
         assert task["task_status"] == "open"
+        assert task["checks"] == [{"name": "true", "status": "pending"}]
+        assert task["review"] is None
         execution_id = task["id"]
 
         listed = client.get("/api/tasks").json()
@@ -869,7 +883,7 @@ def test_handoff_route_compiles_portable_bundle(tmp_path: Path) -> None:
     for args in (
         ["init", "-q"],
         ["config", "user.email", "test@example.invalid"],
-        ["config", "user.name", "KYN Test"],
+        ["config", "user.name", "Ari Test"],
     ):
         subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
     (repo / "app.py").write_text("value = 1\n")

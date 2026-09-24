@@ -1,7 +1,7 @@
 import React from "react";
 import { REVIEWER_OUTPUT } from "../timeline";
 import { Sidebar } from "../../src/components/Sidebar";
-import { KiroGlyph } from "../../src/components/KiroGlyph";
+import { AriGlyph } from "../../src/components/AriGlyph";
 import type { WorkflowSnapshot } from "../workflowState";
 import { workflowEdgePath, WORKFLOW_BOARD } from "../workflowState";
 import { scenes } from "../timeline";
@@ -108,7 +108,7 @@ export const DemoWorkflowPage: React.FC<Props> = ({ snapshot, frame, fps }) => {
           <header className="workflow-stage-header">
             <div className="header-brand" style={{ gap: 10 }}>
               <span className="header-logo" aria-hidden>
-                <KiroGlyph size={20} />
+                <AriGlyph size={20} />
               </span>
               <div>
                 <p className="eyebrow">{snapshot.planStatus === "draft" ? "New workflow" : "Saved workflow"}</p>
@@ -231,7 +231,7 @@ export const DemoWorkflowPage: React.FC<Props> = ({ snapshot, frame, fps }) => {
                         />
                         <header className="flow-node-header">
                           <span className="flow-node-index">{String(node.index).padStart(2, "0")}</span>
-                          <span className="flow-node-kind">KYN bot</span>
+                          <span className="flow-node-kind">Ari bot</span>
                           <span className="flow-node-grip" aria-hidden>⠿</span>
                           {node.status === "running" ? (
                             <span

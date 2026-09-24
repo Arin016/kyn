@@ -7,7 +7,7 @@ export default defineConfig({
   plugins: [react()],
   base: vercel ? "/" : "/app/",
   build: {
-    outDir: "../web/dist",
+    outDir: process.env.ARI_DESKTOP_OUT_DIR || process.env.KYN_DESKTOP_OUT_DIR || "../web/dist",
     emptyOutDir: true,
   },
   server: {

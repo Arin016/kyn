@@ -72,12 +72,19 @@ export function useWebSocket(
 }
 
 export function wsUrl(path: string): string {
+  const append = (base: string) => {
+    const [pathname, search] = base.split("?", 2);
+    const params = new URLSearchParams(search || "");
+    return { pathname, params };
+  };
   if (apiBase) {
     const remote = new URL(apiBase);
     const protocol = remote.protocol === "https:" ? "wss:" : "ws:";
     const token = accessToken();
-    const suffix = token ? `?token=${encodeURIComponent(token)}` : "";
-    return `${protocol}//${remote.host}${path}${suffix}`;
+    const { pathname, params } = append(path);
+    if (token) params.set("token", token);
+    const query = params.toString();
+    return `${protocol}//${remote.host}${pathname}${query ? `?${query}` : ""}`;
   }
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
   return `${protocol}//${location.host}${path}`;

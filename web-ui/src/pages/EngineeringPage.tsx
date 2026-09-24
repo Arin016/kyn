@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { KiroGlyph } from "../components/KiroGlyph";
+import { AriGlyph } from "../components/AriGlyph";
 
 type Step = {
   title: string;
@@ -11,33 +11,33 @@ type Step = {
 
 const STEPS: Step[] = [
   {
-    title: "Builder in a detached worktree",
+    title: "A builder works in an isolated task workspace",
     body:
-      "The named builder bot writes into a Git worktree cut from your repo. Your checkout does not move. Artifacts are hashed as they land — capped at 128 files, 25 MiB each, 100 MiB total.",
+      "The selected builder bot runs in a Git worktree cut from your repo. Your current checkout stays put while Ari records the task branch and changed files.",
     cite: "workspaces.py",
   },
   {
-    title: "Deterministic checks by your commands",
+    title: "Your checks decide whether the work passes",
     body:
-      "The checks you gave — pytest, mypy, whatever — run inside the worktree by direct argv, not through a tool call. Timeouts are per-check and aggregate. Nothing runs under a shell.",
+      "The commands you provide, such as pytest or mypy, run inside the worktree as direct arguments. Each check has a timeout and its result is recorded with the task.",
     cite: "coding_workflow.py",
   },
   {
     title: "Bounded repair",
     body:
-      "On failure, a repair turn feeds Kiro the exact output of the failed check. The loop caps at a number you set at execution time. Hard-limited to three.",
+      "When a check fails, Ari can give the builder the failure output and a bounded chance to repair it. You choose the repair limit for the task.",
     cite: "coding_workflow.py",
   },
   {
     title: "A different bot reads the diff",
     body:
-      "The reviewer is a separate named bot with its own policy. It reads the artifact manifest, not the writer's plan. If the reviewer touches a file, the SHA-256 changes and the mutation is flagged.",
+      "A different named bot reviews the resulting change with its own engine and policy. Ari checks for unexpected changes during review and keeps the findings with the task.",
     cite: "coding_lifecycle.py",
   },
   {
     title: "You approve, or nothing lands",
     body:
-      "Nothing merges, pushes, opens a pull request, or replies until you approve the handoff. The worktree is retained. Cleanup is a separate call that only removes clean state.",
+      "Review the findings and diff, then approve the handoff before merging the reviewed task into its base branch. Ari does not open pull requests or publish changes.",
     cite: "coding_lifecycle.py",
     mark: true,
   },
@@ -46,37 +46,37 @@ const STEPS: Step[] = [
 const SUBSYSTEMS: { area: string; role: string; file: string }[] = [
   {
     area: "Engine",
-    role: "Multiplexes many logical Kiro sessions over one kiro-cli acp subprocess. Per-bot FIFO workers with expiring durable leases.",
+    role: "Runs one named bot on Kiro, OpenCode, or Codex through its ACP-compatible process. Per-bot FIFO workers keep each bot's turns ordered.",
     file: "engine.py",
   },
   {
     area: "Runtime",
-    role: "Spawns and supervises kiro-cli acp. Newline-delimited JSON-RPC 2.0 over stdin/stdout. Untrusted framing, drained stderr.",
+    role: "Spawns and supervises the selected ACP engine process, streams structured events, and keeps subprocess output separate from the protocol.",
     file: "runtime.py",
   },
   {
     area: "Session",
-    role: "Owns the ACP conversation lifecycle. initialize, session/new, session/prompt, session/update, session/request_permission.",
+    role: "Owns the ACP conversation lifecycle and normalizes engine events so chat, approvals, and run history share one interface.",
     file: "session.py",
   },
   {
     area: "Governance",
-    role: "Per-bot approval policy (ask, deny, allow-list). Atomic quota leases. Payload-free audit log — decisions only, never arguments.",
+    role: "Per-bot tool policy, quotas, durable approval decisions, and an audit log that records decisions without raw tool arguments.",
     file: "governance.py",
   },
   {
     area: "Plugins",
-    role: "MCP registry with per-bot bindings. Secret values never persist; only environment-variable references. Resolution happens at session launch.",
+    role: "MCP catalogue and registry with per-bot bindings. Secrets resolve from environment references only when a session launches.",
     file: "plugins.py",
   },
   {
     area: "Workspaces",
-    role: "Detached Git worktrees per run with heartbeat leases. Artifact manifests hashed with SHA-256. Explicit clean-only cleanup.",
+    role: "Isolated Git worktrees and task branches with lease tracking, changed-file manifests, review, and explicit merge or abandon actions.",
     file: "workspaces.py",
   },
   {
     area: "Coding lifecycle",
-    role: "Builder / checks / repair / reviewer state machine with idempotency and mutation detection. Human handoff is the only completion path.",
+    role: "Builder, checks, bounded repair, reviewer, and human handoff stages with idempotent state transitions.",
     file: "coding_lifecycle.py",
   },
   {
@@ -91,7 +91,7 @@ const SUBSYSTEMS: { area: string; role: string; file: string }[] = [
   },
   {
     area: "Channels",
-    role: "Signature-verified ingest from Slack, GitHub, WhatsApp, email, and generic webhooks. Telegram polls and returns actionable approval buttons without a public URL.",
+    role: "Authenticated event intake from Slack, GitHub, WhatsApp Cloud API, normalized email, signed webhooks, and Telegram polling.",
     file: "channels.py",
   },
   {
@@ -103,24 +103,24 @@ const SUBSYSTEMS: { area: string; role: string; file: string }[] = [
 
 const ROADMAP = [
   {
-    title: "A reviewer-driven publisher",
+    title: "Pull request publishing",
     body:
-      "Binary patch bundles, a separately approved publisher that opens pull requests and drives CI repair. Merge stays human-only.",
+      "A reviewed task can merge into its local base branch after approval. Opening pull requests and coordinating CI from a connected provider are not part of Ari yet.",
   },
   {
-    title: "Auth, org boundaries, budgets",
+    title: "People and organization controls",
     body:
-      "Right now the daemon binds to loopback with no authentication layer. The next chapter is proper multi-tenancy, SSO, and metered provider budgets per bot.",
+      "Remote access can use a bearer token, but Ari does not yet provide user accounts, organization tenancy, SSO, or team-wide administration.",
   },
   {
-    title: "Bot-to-bot mailboxes",
+    title: "Asynchronous bot conversations",
     body:
-      "Delegation is one-directional today. Persistent inter-bot queues would let bots subscribe to each other's completions without a plan graph.",
+      "Bots can call a named bot for a focused result or run through a durable team plan. Always-on asynchronous bot mailboxes are not available yet.",
   },
   {
-    title: "Native Gmail, computer-use",
+    title: "More native connectors",
     body:
-      "Email is a normalized webhook contract. A first-party Gmail OAuth synchronizer and a browser/computer-use provider are on the list.",
+      "Email currently arrives through a normalized signed webhook. A first-party Gmail sync and a browser-control engine are not available yet.",
   },
 ];
 
@@ -236,16 +236,16 @@ export default function EngineeringPage({ onEnterConsole, onBackToLanding }: Pro
             type="button"
             className="ed-wordmark"
             onClick={onBackToLanding}
-            aria-label="KYN — home"
+            aria-label="Ari — home"
           >
-            <KiroGlyph className="glyph" size={26} tone="ink" />
-            KYN
+            <AriGlyph className="glyph" size={26} tone="ink" />
+            Ari
           </button>
-          <nav className="ed-nav-links" aria-label="Engineering">
-            <button type="button" onClick={() => scrollTo("protocol")}>Protocol</button>
-            <button type="button" onClick={() => scrollTo("lifecycle")}>Lifecycle</button>
-            <button type="button" onClick={() => scrollTo("map")}>Map</button>
-            <button type="button" onClick={() => scrollTo("roadmap")}>Roadmap</button>
+          <nav className="ed-nav-links" aria-label="How Ari works">
+            <button type="button" onClick={() => scrollTo("protocol")}>Engines</button>
+            <button type="button" onClick={() => scrollTo("lifecycle")}>Tasks</button>
+            <button type="button" onClick={() => scrollTo("map")}>Product map</button>
+            <button type="button" onClick={() => scrollTo("roadmap")}>Current boundaries</button>
             <button type="button" className="ed-btn ed-btn-primary" onClick={onEnterConsole}>
               Open the console
             </button>
@@ -262,7 +262,7 @@ export default function EngineeringPage({ onEnterConsole, onBackToLanding }: Pro
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
           >
-            Under the surface
+            How Ari works
           </motion.p>
           <motion.h1
             className="ed-hero-h1 ed-hero-h1-eng"
@@ -270,7 +270,7 @@ export default function EngineeringPage({ onEnterConsole, onBackToLanding }: Pro
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
           >
-            Kiro does the work. This system makes it durable.
+            One crew. Three engines. A shared place to work.
           </motion.h1>
           <motion.p
             className="ed-lead"
@@ -278,9 +278,9 @@ export default function EngineeringPage({ onEnterConsole, onBackToLanding }: Pro
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.16 }}
           >
-            KYN does not replace the Kiro agent harness. It gives Kiro a durable identity,
-            routes real work to it, preserves the state around each job, and enforces the boundaries
-            the model cannot be trusted to remember on its own.
+            Choose Kiro, OpenCode, or Codex for each bot. Ari keeps the conversation, work queue,
+            connected tools, handoffs, and review steps together, while each engine remains in
+            charge of its own reasoning and tool execution.
           </motion.p>
         </section>
 
@@ -288,14 +288,12 @@ export default function EngineeringPage({ onEnterConsole, onBackToLanding }: Pro
         <section id="protocol" className="ed-section" style={{ paddingTop: 0 }}>
           <div className="ed-container">
             <Reveal>
-              <p className="ed-eyebrow">Built on Kiro</p>
-              <h2 className="ed-h2">One Kiro runtime. A durable identity for every job.</h2>
+              <p className="ed-eyebrow">One workspace · three engines</p>
+              <h2 className="ed-h2">Pick an engine for each bot. Keep the work together.</h2>
               <p className="ed-body ed-body-lead">
-                The product starts with the official programmatic surface. KYN launches{" "}
-                <code className="ed-inline-code">kiro-cli acp</code> and speaks newline-delimited
-                JSON-RPC 2.0 over stdin and stdout. Kiro keeps ownership of reasoning, models, and
-                tools; KYN owns the agents, queues, channels, policies, and durable outcomes
-                around those sessions.
+                Ari launches each selected engine through its ACP-compatible command. The engine
+                handles its models and tools; Ari handles named bots, conversations, approvals,
+                work queues, channels, and the context carried between engines.
               </p>
             </Reveal>
 
@@ -310,16 +308,15 @@ export default function EngineeringPage({ onEnterConsole, onBackToLanding }: Pro
                 </div>
                 <pre>
                   <code>
-{`spawn `}<span className="cmd">kiro-cli acp</span>{`
+{`choose engine  `}<span className="cmd">Kiro | OpenCode | Codex</span>{`
+  → launch its ACP process
   → initialize
-  → session/new  `}<span className="cmt">{`{ cwd, mcpServers }`}</span>{`
-  → session/set_mode      `}<span className="cmt">{`(optional)`}</span>{`
-  → session/set_model     `}<span className="cmt">{`(optional)`}</span>{`
+  → session/new  `}<span className="cmt">{`{ project, configured tools }`}</span>{`
   → session/prompt        `}<span className="cmt">{`{ sessionId, prompt: [...] }`}</span>{`
-  ← session/update        `}<span className="cmt">{`(text, thinking, tool_call, usage)`}</span>{`
-  ← session/request_permission  `}<span className="cmt">{`(tool_call awaits your call)`}</span>{`
+  ← normalized events     `}<span className="cmt">{`(text, tool activity, usage)`}</span>{`
+  ← permission request    `}<span className="cmt">{`(handled by bot policy)`}</span>{`
   → `}<span className="path">approve / reject</span>{`
-  ← prompt response       `}<span className="cmt">{`{ stopReason }`}</span>
+  ← result and run record`}
                   </code>
                 </pre>
               </div>
@@ -328,19 +325,18 @@ export default function EngineeringPage({ onEnterConsole, onBackToLanding }: Pro
             <Reveal delay={0.18}>
               <div className="ed-install-notes">
                 <div>
-                  <p className="ed-eyebrow">What the control plane guarantees</p>
+                  <p className="ed-eyebrow">What Ari tracks</p>
                   <p className="ed-body">
-                    Every accepted turn gets a durable record. Work for one agent stays ordered;
-                    different agents can move concurrently. Permission requests always receive an
-                    explicit answer, and a session is persisted before it is treated as recoverable.
+                    Accepted work gets a durable record. Each bot's turns stay ordered while
+                    different bots can run concurrently. Pending approvals and task reviews remain
+                    visible in the work inbox.
                   </p>
                 </div>
                 <div>
-                  <p className="ed-eyebrow">What stays with Kiro</p>
+                  <p className="ed-eyebrow">What stays with each engine</p>
                   <p className="ed-body">
-                    Model calls, context assembly, planning, tool execution, and the actual agentic
-                    work. That separation means KYN can improve the product experience without
-                    pretending to be a second agent harness.
+                    Model access, reasoning, and native tool execution. Ari provides the continuity
+                    and review experience around those engines without replacing their harnesses.
                   </p>
                 </div>
               </div>
@@ -355,9 +351,9 @@ export default function EngineeringPage({ onEnterConsole, onBackToLanding }: Pro
               <p className="ed-eyebrow">Verified coding</p>
               <h2 className="ed-h2">A code change should come back with evidence.</h2>
               <p className="ed-body ed-body-lead">
-                Implementation is only one stage. The workflow fixes the path through isolation,
-                your deterministic checks, bounded repair, independent review, and a final human
-                handoff. The model can reason; it cannot quietly redefine done.
+                A coding task moves through isolation, your checks, bounded repair, and an
+                independent review. You inspect the findings and diff, then approve before the
+                reviewed task is merged into its base branch.
               </p>
             </Reveal>
 
@@ -413,7 +409,7 @@ export default function EngineeringPage({ onEnterConsole, onBackToLanding }: Pro
               <p className="ed-body ed-body-lead">
                 Every product promise maps to a small subsystem under{" "}
                 <code className="ed-inline-code">src/kyn/</code>. Everything durable lives in a
-                local SQLite database under <code className="ed-inline-code">~/.kyn/</code>,
+                local SQLite database under <code className="ed-inline-code">~/.ari/</code>,
                 while secrets remain environment references resolved only when a session starts.
               </p>
             </Reveal>
@@ -438,12 +434,11 @@ export default function EngineeringPage({ onEnterConsole, onBackToLanding }: Pro
         <section id="roadmap" className="ed-section">
           <div className="ed-container">
             <Reveal>
-              <p className="ed-eyebrow">Productization roadmap</p>
-              <h2 className="ed-h2">What must be true before this serves a team.</h2>
+              <p className="ed-eyebrow">Current boundaries</p>
+              <h2 className="ed-h2">Know what Ari can do today.</h2>
               <p className="ed-body ed-body-lead">
-                The local prototype is intentionally honest about its boundary. A hosted or
-                organization-wide product still needs identity, tenancy, budgets, publishing, and
-                richer native integrations—not merely another landing-page promise.
+                Ari supports local use and can be deployed remotely. The capabilities below are
+                not included yet, so you can see where the current product stops.
               </p>
             </Reveal>
 
@@ -468,12 +463,12 @@ export default function EngineeringPage({ onEnterConsole, onBackToLanding }: Pro
           <div className="ed-footer-grid">
             <div className="ed-footer-col">
               <div className="ed-footer-mark">
-                <KiroGlyph className="glyph" size={22} tone="ink" />
-                KYN
+                <AriGlyph className="glyph" size={22} tone="ink" />
+                Ari
               </div>
               <p className="ed-footer-tag">
-                An independent orchestration layer around Kiro's Agent Client Protocol. Kiro
-                remains the execution engine.
+                A shared workspace around Kiro, OpenCode, and Codex. Each engine remains in charge
+                of its own model access and tool execution.
               </p>
             </div>
             <div className="ed-footer-col">
@@ -489,7 +484,7 @@ export default function EngineeringPage({ onEnterConsole, onBackToLanding }: Pro
                 <li><button type="button" onClick={() => scrollTo("protocol")}>Protocol</button></li>
                 <li><button type="button" onClick={() => scrollTo("lifecycle")}>Lifecycle</button></li>
                 <li><button type="button" onClick={() => scrollTo("map")}>Subsystems</button></li>
-                <li><button type="button" onClick={() => scrollTo("roadmap")}>Roadmap</button></li>
+                <li><button type="button" onClick={() => scrollTo("roadmap")}>Current boundaries</button></li>
               </ul>
             </div>
             <div className="ed-footer-col">
@@ -498,14 +493,14 @@ export default function EngineeringPage({ onEnterConsole, onBackToLanding }: Pro
                 <li>Approvals answered, never dropped</li>
                 <li>Secrets stay in env vars</li>
                 <li>Audit is payload-free</li>
-                <li>Reviewer bot can't push</li>
+                <li>Human approval before task merge</li>
               </ul>
             </div>
             <div className="ed-footer-col">
               <p className="ed-eyebrow">Runtime</p>
               <ul>
                 <li>Loopback binding by default</li>
-                <li>SQLite under ~/.kyn/</li>
+                <li>SQLite under ~/.ari/</li>
                 <li>One controller per data dir</li>
                 <li>Telegram polled, not webhooked</li>
               </ul>
@@ -513,8 +508,7 @@ export default function EngineeringPage({ onEnterConsole, onBackToLanding }: Pro
           </div>
           <div className="ed-footer-bottom">
             <span className="ed-footer-fine">
-              Built independently around Kiro's ACP interface. No source files from any Kiro
-              distribution are included.
+              Ari is an independent product. Kiro, OpenCode, and Codex are their respective owners' products.
             </span>
           </div>
         </div>

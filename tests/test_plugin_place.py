@@ -163,6 +163,20 @@ def test_install_filesystem_end_to_end(tmp_path: Path) -> None:
     assert again["plugin_id"] == "filesystem"
 
 
+def test_reconnect_existing_plugin_reuses_saved_configuration(tmp_path: Path) -> None:
+    store, registry = _registry(tmp_path)
+    _bot(store, "scout", tmp_path)
+    _bot(store, "writer", tmp_path)
+    install_template(
+        registry, store, "filesystem", ["scout"], {"ALLOWED_DIR": str(tmp_path)}
+    )
+
+    result = install_template(registry, store, "filesystem", ["writer"], {})
+
+    assert result["bindings"][0]["bot_name"] == "writer"
+    assert registry.get_plugin("filesystem").args[-1] == str(tmp_path)
+
+
 def test_install_gitlab_routes_token_to_vault(tmp_path: Path) -> None:
     store, registry = _registry(tmp_path)
     _bot(store, "scout", tmp_path)

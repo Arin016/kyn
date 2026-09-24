@@ -4,25 +4,41 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
-    <meta name="theme-color" content="#f4f7f3" />
+    <meta name="theme-color" content="#f4f5f6" />
     <meta
       name="description"
-      content="KYN is the local control plane for persistent Kiro agents: durable sessions, group chats, schedules, channels and per-tool approvals."
+      content="Bring Kiro, OpenCode, and Codex into one workspace. Route work to the right bot, review tasks and approvals, and carry context between agents with Ari."
     />
-    <title>KYN — control plane for persistent agents</title>
+    <title>Ari — one workspace for your agent crew</title>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Ari — one workspace for your agent crew" />
+    <meta
+      property="og:description"
+      content="Bring Kiro, OpenCode, and Codex into one workspace. Route work, review tasks, and carry context between agents."
+    />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Ari — one workspace for your agent crew" />
+    <meta
+      name="twitter:description"
+      content="Bring Kiro, OpenCode, and Codex into one workspace. Route work, review tasks, and carry context between agents."
+    />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./brand-mark.svg" />
+    <link rel="manifest" href="%BASE_URL%manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Ari" />
     <script>
-      // Pre-paint theme: paper by default, black mode if the user chose it.
+      // Pre-paint theme: dark by default, or restore an existing choice.
       // Namespaced so nothing else on the page can hijack `data-theme`.
       (function () {
         try {
-          var stored = window.localStorage.getItem("kyn-theme");
-          var theme = stored === "dark" ? "dark" : "light";
-          document.documentElement.setAttribute("data-kyn-theme", theme);
+          var stored = window.localStorage.getItem("ari-theme") || window.localStorage.getItem("kyn-theme");
+          var theme = stored === "light" ? "light" : "dark";
+          document.documentElement.setAttribute("data-ari-theme", theme);
           var meta = document.querySelector('meta[name="theme-color"]');
-          if (meta) meta.setAttribute("content", theme === "dark" ? "#060806" : "#f4f7f3");
+          if (meta) meta.setAttribute("content", theme === "dark" ? "#1b1c1e" : "#f4f5f6");
         } catch (error) {
-          document.documentElement.setAttribute("data-kyn-theme", "light");
+          document.documentElement.setAttribute("data-ari-theme", "dark");
         }
       })();
     </script>

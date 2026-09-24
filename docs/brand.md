@@ -1,29 +1,40 @@
-# KYN brand mark
+# Ari brand
 
-The KYN mark is the **night ghost**: a dark, agent-like silhouette edged in electric violet. The silhouette is the signature; it never carries a letter or word inside its body.
+Ari is a calm, capable workspace for a colorful crew of distinct coding bots.
+The product shell uses graphite, paper, and silver. Bot artwork keeps its own
+bright color so each helper remains recognizable.
 
-It combines the approachable ghost language from the supplied references with the product's local-first, dark control-room identity. The result is intentionally not a white Kiro ghost pasted onto a purple square.
+## Visual system
 
-## Palette
+- Light surfaces use cool paper white and restrained graphite text.
+- Dark surfaces use matte charcoal layers with soft neutral highlights.
+- Gradients stay close to white, silver, and graphite; avoid a purple cast.
+- Reserve strong color for bot characters, status, and meaningful actions.
+- Use thin, quiet borders and rounded panels to make the interface feel
+  considered without outlining every element.
+- Use the shared spacing, type, elevation, and corner tokens in
+  `web-ui/src/styles/tokens.css`.
 
-- Graphite highlight: `#292332`
-- Near-black body: `#07070A`
-- Soft violet: `#D7C2FF`
-- Electric violet: `#A66BFF`
-- Deep violet: `#6D22DD`
+## Bot artwork
+
+Each Ari bot has a deterministic, name-generated character. Keep the individual
+bot colors and silhouettes intact in chat, handoff, inbox, and task surfaces.
+Do not recolor the characters to match the graphite application shell.
 
 ## Assets
 
-- `web-ui/public/brand-mark.svg` — transparent standalone mark for documentation and product surfaces.
-- `web-ui/public/favicon.svg` — compact mark on a rounded dark tile.
-- `web/logo.svg` and `web/favicon.svg` — equivalents used by the dependency-free fallback UI.
-- `web-ui/src/components/KiroGlyph.tsx` — inline React version used by the landing page, engineering page, control room, sidebar, and footer.
-- `web-ui/src/components/PixelKiro.tsx` — the living hero field, which continuously assembles the ghost and Kiro wordform from streaming pixels.
+- `web-ui/public/brand-mark.svg` — Ari crew mark.
+- `web-ui/public/favicon.svg` — browser and PWA icon.
+- `web/logo.svg` and `web/favicon.svg` — fallback control-room marks.
+- `web-ui/src/components/AriGlyph.tsx` — inline brand mark used by the app and
+  marketing pages.
+- `web-ui/src/components/AriHelper.tsx` and `BotAvatar.tsx` — bot identity art.
+- `docs/ari-logo-options.svg` — earlier logo concepts.
 
-## Usage
+## Naming and attribution
 
-- Keep the mark on black, graphite, white, or very light neutral backgrounds.
-- Preserve its aspect ratio and do not recolor individual features.
-- Keep the standalone mark letter-free. The animated hero may form the Kiro word externally as a transient particle state.
-- At sizes below 20px, prefer the favicon tile.
-- Do not pair it with the standalone Kiro wordmark or imply that this independent project is an official Kiro distribution.
+- Write the product name as **Ari**.
+- Use “bot” for a named Ari identity and “engine” for Kiro, OpenCode, or Codex.
+- Keep each engine name attached only to its own integration.
+- Ari is an independent product and is not an official distribution of those
+  tools.

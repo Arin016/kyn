@@ -1,123 +1,105 @@
-# Architecture and protocol trace
+# Ari architecture
 
-## The key discovery
+## Product boundary
 
-Kiro exposes an agent process through `kiro-cli acp`. An orchestrator does not
-need to emulate Kiro or drive its terminal UI. It launches that command and
-speaks ACP as newline-delimited JSON-RPC 2.0 over stdin/stdout.
-
-The minimum connection flow is:
+Ari is the durable workspace around native agent engines. A bot selects one
+engine—Kiro, OpenCode, or Codex—while Ari owns its identity, conversations,
+queues, shared memory, integrations, schedules, approvals, and work records.
+The engine retains its own model access, account, reasoning, and native tool
+execution.
 
 ```text
-spawn kiro-cli acp
-  -> initialize
-  -> session/new OR session/load
-  -> optional session/set_mode
-  -> optional session/set_model
-  -> session/prompt
-  <- session/update notifications
-  <- session/request_permission requests
-  -> approval/rejection response
-  <- prompt response with stopReason
+Browser / macOS app / CLI / schedules / channel events
+                         |
+            FastAPI + WebSocket event stream
+                         |
+              durable scheduler and queues
+               /          |          \
+           bots       workflows       tasks
+             |        and handoffs   worktrees
+             |
+       provider adapter
+      /        |         \
+    Kiro    OpenCode    Codex
+       \\       |         //
+          ACP processes
 ```
 
-`session/cancel` is a notification, not a request. `session/new` must include
-both `cwd` and `mcpServers`, even when the server list is empty.
+## Engine lifecycle
 
-## Where orchestration lives
+The provider adapter selects the executable and session initialization for a
+bot's engine. Each engine communicates through its ACP-compatible process. Ari
+normalizes stream events for chat, run history, and permission review while
+retaining the selected engine on each bot and run.
 
-Kiro owns model calls and tool execution. KYN owns:
+Turns for a bot are processed in FIFO order. Different bots can work in
+parallel. Durable run records and leases support recovery after a service
+restart. Provider-specific capabilities differ; for example, session resume,
+model selection, and available modes depend on the engine.
 
-- bot identity and configuration;
-- session-to-bot mapping and resumption;
-- durable turn/event history;
-- approval policy and audit records;
-- queues, schedules, channels, and agent-to-agent delegation;
-- runtime health, concurrency limits, and recovery.
+## Cross-engine handoff
 
-The important distinction is process versus session. One ACP process can host
-multiple logical Kiro sessions. A single stdout reader must demultiplex frames
-by `sessionId`, while JSON-RPC responses are correlated by request ID. Prompts
-must be serialized per session, but independent sessions may run concurrently.
+A handoff keeps the named bot and destination engine explicit. Ari captures a
+bounded brief from recent conversation, salient events, and the current Git
+workspace, redacts common secret patterns, and includes the previous and next
+engine identities. The destination bot receives this as context in its own
+engine session. A handoff carries evidence; it does not make earlier findings
+authoritative instructions.
 
-## Safety rules in this kernel
+## Work and review
 
-1. Never auto-approve a permission request that has no owning session.
-2. Always answer server-to-client permission requests; silently dropping one
-   can wedge the backend waiting for a response.
-3. Allow only one active prompt per logical session.
-4. Treat stdout as untrusted framing: ignore non-JSON and non-object lines.
-5. Keep stderr drained so the subprocess cannot block on a full pipe.
-6. Persist the Kiro session ID before considering a conversation durable.
-7. Drive policy from Kiro's canonical `_meta.kiro` tool identity, never the
-   model-authored tool title shown to a user.
-8. Resolve MCP secret references only while compiling the ephemeral
-   `mcpServers` launch payload; never persist or log resolved values.
-9. Make the plugin registry the sole MCP source. Inline legacy server JSON and
-   backend `autoApprove`/`allow_always` grants are rejected because they evade
-   later host-policy revocation.
-10. Reserve quotas atomically before enqueueing a run and release the lease on
-   every terminal path.
-11. Keep governance audit records low-cardinality and payload-free. Prompts,
-    tool arguments, environment values and raw provider frames do not belong in
-    the audit schema.
-12. Represent each human gate as a durable, single-decision interaction. Never
-    turn a per-action approval into blanket trust for the rest of a run.
-13. Bind host actuation through the reserved `kiro-control` MCP with an explicit
-    tool set. It is host-managed, hidden from user MCP configuration and still
-    passes through ordinary permission policy.
+- Work inbox links pending approvals, tasks, runs, workflows, and channel events
+  to their owning review surfaces.
+- Durable workflows form bounded dependency graphs. Independent nodes can run
+  concurrently; dependent nodes wait for their inputs.
+- Coding tasks pin a base commit, create a branch, and run a builder in an
+  isolated worktree. User-specified checks run as direct argv commands, with
+  bounded repair and independent review.
+- The person reviews the diff and findings and approves the handoff. Ari can
+  then merge the reviewed work into its local base branch or abandon the task.
+  Pull-request creation and release publishing are not implemented.
+
+## Safety and data boundaries
+
+1. Resolve tool decisions from the engine's tool identity and the bot's policy,
+   not from model-authored display text.
+2. Keep each permission decision explicit and durable. A single approval does
+   not silently approve later actions in the run.
+3. Store plugin secret references, not plaintext secret values. Resolve them
+   only when a session is launched.
+4. Keep audit records focused on decisions and outcomes; do not copy raw tool
+   arguments into the audit ledger.
+5. Reserve quotas before enqueueing work and release leases on terminal paths.
+6. Keep channel signing secrets in environment variables. Verify provider
+   signatures, reject stale signed requests, deduplicate delivery IDs, and
+   preserve bounded source-thread context.
+7. Bind the local daemon to loopback by default. Remote deployments should set
+   the access token and allowed origins and use a private or authenticated
+   network path.
+
+Kiro has provider-specific permission metadata and session behavior; the
+adapter applies those details without making them assumptions for other
+engines.
 
 ## Implemented product layers
 
-- Long-running daemon and WebSocket event bus.
-- Responsive browser UI with persistent bot cards, history, live activity,
-  approvals and cancellation.
-- Per-bot FIFO workers, cross-bot concurrency and bounded run/event retention.
-- Clean runtime recovery after failure or cancellation.
-- Durable interval and one-time routines with transactional claims, retry
-  backoff, bounded concurrency and no catch-up storms.
-- Per-bot ask/deny/allow-list policy, deny precedence, fixed UTC quotas and
-  immutable action audit.
-- Persistent MCP registry with per-bot bindings, environment references,
-  HTTPS enforcement and fail-closed launch compilation.
-- Browser management views for routines, safety limits, MCP connections and
-  recent audit decisions.
-- Durable run queue with atomic claims, startup recovery, expiring leases and
-  at-least-once replay after a hard crash.
-- Durable multi-bot DAGs with bounded fan-out/depth, exclusive ready-node
-  claims, dependency failure propagation, cancellation and aggregation.
-- A dedicated Workflow playground over the DAG schema plus conversational
-  `create_team_plan`, inspection, cancellation and focused `call_bot` tools.
-  The playground has a saved-plan rail, node-and-arrow canvas, gesture zoom,
-  bottom validation/output panel, and per-plan review state.
-- Durable interaction ledger with reload-safe control-room decisions and
-  Telegram inline decision callbacks scoped to the originating channel run.
-- Detached, token-leased Git workspaces with retained material output,
-  contained artifact hashing and explicit clean-only cleanup.
-- Workspace-aware ACP execution with durable run-to-worktree bindings,
-  per-workspace serialization, lease heartbeats and restart restoration.
-- Durable coding executions with idempotent acceptance, isolated Kiro builder
-  turns, direct-argv deterministic checks, bounded repair loops, independent
-  reviewer bots, reviewer-mutation detection, retained artifact manifests and
-  an explicit human handoff boundary.
-- Authenticated external channel bindings for Slack, GitHub, Telegram, WhatsApp
-  Cloud API, normalized email and generic webhooks. Telegram inbound is
-  laptop-side long polling against `api.telegram.org` only. Other providers
-  verify raw-body signatures, reject stale signed requests, and use public
-  webhooks. The gateway deduplicates provider delivery IDs, builds bounded
-  source-thread context, runs each event in a fresh external ACP session,
-  submits through the governed Engine and retains the response even when
-  outbound delivery is not configured.
+- React control room, responsive mobile layout, installable web app, macOS
+  wrapper, setup flow, and CLI.
+- Per-bot workers, persistent conversations, streaming events, cancellation,
+  and restart recovery.
+- Kiro, OpenCode, and Codex ACP provider adapters and per-bot engine selection.
+- Cross-engine handoff with repository and conversation evidence.
+- Shared memory, durable schedules, per-bot safety policies, quotas, and audit.
+- MCP registry, integration catalogue, per-bot bindings, and secret references.
+- Multi-bot workflows, conversational team control, and inspectable node output.
+- Work inbox, reviewable coding tasks, isolated Git worktrees, checks, reviewer
+  results, and human-approved merge or abandon.
+- Slack, GitHub, WhatsApp Cloud API, Telegram polling, normalized email, and
+  generic signed webhook adapters.
 
-## Next product layers
+## Current product gaps
 
-1. Produce a reproducible binary patch bundle that represents additions,
-   deletions, renames and file modes, then add a separately approved publisher
-   for branch, pull-request and CI repair workflows. Merge remains human-only.
-2. Add a durable phase-event ledger and phase idempotency keys so every
-   external side effect can be reconciled precisely after a hard crash.
-3. Add asynchronous bot-to-bot mailboxes, group threads, a native Gmail OAuth/history
-   synchronizer and a persistent browser/computer-use provider.
-4. Add authentication, organization controls and metered provider budgets.
-5. Add pluggable eval suites, model/harness routing and longitudinal quality
-   data.
+- User accounts, SSO, organization tenancy, and team administration.
+- Pull-request creation and CI coordination through a hosting provider.
+- Native Gmail synchronization and asynchronous bot mailboxes.
+- Browser or desktop-computer control as an agent engine.

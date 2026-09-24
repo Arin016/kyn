@@ -172,6 +172,16 @@ def test_keyset_pagination_covers_more_than_one_page(tmp_path) -> None:
     ]
 
 
+def test_latest_runs_can_be_listed_newest_first(tmp_path) -> None:
+    repository = _repository(tmp_path)
+    for index in range(5):
+        repository.enqueue(f"run-{index}", "builder", str(index), now=NOW)
+
+    latest = repository.list_runs(limit=2, newest_first=True)
+
+    assert [run.run_id for run in latest] == ["run-4", "run-3"]
+
+
 def test_claim_loser_gets_no_lease_on_guarded_update_race(tmp_path) -> None:
     """A lost claim race must return None, never a phantom lease."""
     repository = _repository(tmp_path)

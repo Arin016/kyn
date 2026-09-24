@@ -1,79 +1,80 @@
 :root {
-  /* ============ KYN — strict black & white ============
-     Paper #f4f7f3 canvas, ink #0b0e0b type. No hue anywhere: state is carried
-     by weight, fill and form. Light is the default; `data-kyn-theme="dark"`
-     flips the same tokens to the black palette.
+  /* ============ Ari — graphite and silver ============
+     Neutral paper for light mode; matte black and graphite for dark mode.
+     Color is reserved for semantic states. The interface identity comes from
+     surface depth, typography, and restrained neutral contrast.
 
-     The theme attribute is `data-kyn-theme` on purpose — host environments and
+     The theme attribute is `data-ari-theme` on purpose — host environments and
      extensions write `data-theme`, which must never repaint the app. */
   color-scheme: light;
 
   /* ---- Paper surfaces ---- */
-  --bg: #f4f7f3;
-  --bg-deep: #eef2ec;
-  --bg-mid: #f8faf7;
+  --bg: #f4f5f6;
+  --bg-deep: #eceef0;
+  --bg-mid: #f8f9fa;
   --bg-panel: #ffffff;
-  --bg-sidebar: color-mix(in oklab, #ffffff 68%, transparent);
-  --bg-composer: color-mix(in oklab, #ffffff 78%, transparent);
-  --bg-raised: color-mix(in oklab, #0b0e0b 4%, transparent);
-  --bg-user-bubble: #0b0e0b;
-  --bg-hover: color-mix(in oklab, #0b0e0b 5%, transparent);
-  --code-bg: rgba(11, 20, 12, 0.05);
+  --bg-sidebar: rgba(242, 243, 245, 0.96);
+  --bg-composer: rgba(255, 255, 255, 0.97);
+  --bg-raised: rgba(18, 20, 24, 0.035);
+  --bg-user-bubble: #25272b;
+  --bg-hover: rgba(18, 20, 24, 0.045);
+  --code-bg: rgba(18, 20, 24, 0.055);
 
   /* ---- Solid surfaces (cards, bubbles, popovers) ---- */
   --surface: #ffffff;
-  --surface-2: rgba(255, 255, 255, 0.9);
-  --surface-3: rgba(255, 255, 255, 0.72);
-  --hairline: rgba(11, 20, 12, 0.09);
-  --hairline-strong: rgba(11, 20, 12, 0.18);
+  --surface-2: rgba(255, 255, 255, 0.96);
+  --surface-3: rgba(245, 246, 247, 0.92);
+  --hairline: rgba(18, 20, 24, 0.1);
+  --hairline-strong: rgba(18, 20, 24, 0.18);
 
   /* ---- Inverted blocks (outgoing bubbles, primary actions) ---- */
-  --contrast-bg: #0b0e0b;
-  --contrast-fg: #f7faf6;
+  --contrast-bg: #17191c;
+  --contrast-fg: #ffffff;
 
   /* ---- Bases for color-mix borders / shadows ---- */
-  --edge: rgba(11, 20, 12, 1);
-  --shade: rgba(11, 20, 12, 1);
+  --edge: rgba(35, 37, 40, 1);
+  --shade: rgba(12, 13, 15, 1);
 
   /* ---- Frosted paper glass ---- */
-  --glass-1: color-mix(in oklab, #ffffff 52%, transparent);
-  --glass-2: color-mix(in oklab, #ffffff 70%, transparent);
-  --glass-3: color-mix(in oklab, #ffffff 88%, transparent);
+  --glass-1: color-mix(in oklab, #ffffff 58%, transparent);
+  --glass-2: color-mix(in oklab, #ffffff 76%, transparent);
+  --glass-3: color-mix(in oklab, #ffffff 92%, transparent);
   --glass-bg: var(--glass-1);
-  --glass-border: rgba(11, 20, 12, 0.1);
-  --glass-highlight: rgba(255, 255, 255, 0.85);
-  --glass-blur: 16px;
-  --glass-saturate: 118%;
+  --glass-border: rgba(18, 20, 24, 0.1);
+  --glass-highlight: rgba(255, 255, 255, 0.9);
+  --glass-blur: 18px;
+  --glass-saturate: 128%;
 
   /* ---- Ink scale ---- */
-  --fg: #0b0e0b;
-  --fg-secondary: #2d342d;
-  --fg-muted: #525a52;
-  --fg-faint: #8f9790;
-  --ink: #0b0e0b;
+  --fg: #17191c;
+  --fg-secondary: #3f4248;
+  --fg-muted: #686c73;
+  --fg-faint: #777b82;
+  --ink: #17191c;
 
-  --border: rgba(11, 20, 12, 0.1);
-  --border-strong: rgba(11, 20, 12, 0.18);
+  --border: rgba(18, 20, 24, 0.1);
+  --border-strong: rgba(18, 20, 24, 0.18);
 
-  /* ---- "Brand" is simply ink ---- */
-  --brand: #0b0e0b;
-  --brand-bright: #0b0e0b;
-  --brand-deep: #000000;
-  --brand-glow: rgba(11, 20, 12, 0.18);
-  --accent: #0b0e0b;
-  --accent-fg: #f7faf6;
-  --gradient-brand: linear-gradient(135deg, #1b201b 0%, #0b0e0b 100%);
+  /* ---- Neutral brand and focus ---- */
+  --brand: #303338;
+  --brand-bright: #17191c;
+  --brand-deep: #25272b;
+  --brand-glow: rgba(35, 37, 40, 0.13);
+  --accent: #25272b;
+  --accent-fg: #ffffff;
+  --gradient-brand: linear-gradient(135deg, #303338 0%, #202226 56%, #17191c 100%);
   --gradient-brand-soft: linear-gradient(
-    135deg,
-    rgba(11, 20, 12, 0.07) 0%,
-    rgba(11, 20, 12, 0.02) 100%
+    145deg,
+    rgba(255, 255, 255, 0.75) 0%,
+    rgba(255, 255, 255, 0.32) 58%,
+    rgba(18, 20, 24, 0.018) 100%
   );
-  --gradient-text: linear-gradient(100deg, #0b0e0b 6%, #2d342d 54%, #6f776f 98%);
+  --gradient-text: linear-gradient(100deg, #17191c 6%, #35383d 62%, #555960 100%);
 
-  /* ---- State: no hue, only contrast ---- */
-  --success: #0b0e0b;
-  --warning: #525a52;
-  --danger: #0b0e0b;
+  /* ---- Semantic states ---- */
+  --success: #13875c;
+  --warning: #a86606;
+  --danger: #c43f45;
 
   /* ---- Radii ---- */
   --r-xs: 6px;
@@ -95,12 +96,12 @@
   --space-6: 32px;
 
   /* ---- Elevation ---- */
-  --shadow-glass: 0 0 0 1px rgba(11, 20, 12, 0.05), 0 22px 60px -34px rgba(11, 20, 12, 0.24);
-  --shadow-lift: 0 0 0 1px rgba(11, 20, 12, 0.06), 0 30px 74px -36px rgba(11, 20, 12, 0.3);
-  --shadow-glow: 0 0 0 1px rgba(11, 20, 12, 0.22), 0 10px 26px -14px rgba(11, 20, 12, 0.4);
-  --shadow-glow-strong: 0 0 0 1px rgba(11, 20, 12, 0.3), 0 16px 38px -16px rgba(11, 20, 12, 0.5);
-  --shadow-soft: 0 1px 2px rgba(11, 20, 12, 0.05), 0 18px 40px -30px rgba(11, 20, 12, 0.3);
-  --inset-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  --shadow-glass: 0 0 0 1px rgba(18, 20, 24, 0.045), 0 22px 60px -34px rgba(18, 20, 24, 0.16);
+  --shadow-lift: 0 0 0 1px rgba(18, 20, 24, 0.055), 0 30px 74px -36px rgba(18, 20, 24, 0.2);
+  --shadow-glow: 0 0 0 1px rgba(35, 37, 40, 0.14), 0 10px 28px -15px rgba(18, 20, 24, 0.18);
+  --shadow-glow-strong: 0 0 0 1px rgba(35, 37, 40, 0.2), 0 16px 40px -17px rgba(18, 20, 24, 0.24);
+  --shadow-soft: 0 1px 2px rgba(18, 20, 24, 0.04), 0 18px 40px -30px rgba(18, 20, 24, 0.18);
+  --inset-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.78);
   --ring: color-mix(in oklab, var(--edge) 22%, transparent);
   --shadow-focus: 0 0 0 3px color-mix(in oklab, var(--fg) 16%, transparent);
 
@@ -122,76 +123,76 @@
   --font-mono: "Geist Mono Variable", ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
 }
 
-/* ============ Black mode ============
-   Same structure, inverted ink. Surfaces become near-black glass, contrast
-   blocks flip to paper, and elevation turns into a soft light rim. */
+/* ============ Matte graphite mode ============
+   Layered charcoal surfaces with soft neutral highlights and no hue cast. */
 
-html[data-kyn-theme="dark"] {
+html[data-ari-theme="dark"] {
   color-scheme: dark;
 
-  --bg: #060806;
-  --bg-deep: #040604;
-  --bg-mid: #080b08;
-  --bg-panel: #0a0d0a;
-  --bg-sidebar: rgba(9, 12, 9, 0.72);
-  --bg-composer: rgba(9, 12, 9, 0.78);
-  --bg-raised: rgba(255, 255, 255, 0.05);
-  --bg-user-bubble: #f2f5f1;
-  --bg-hover: rgba(255, 255, 255, 0.06);
-  --code-bg: rgba(255, 255, 255, 0.06);
+  --bg: #111213;
+  --bg-deep: #0b0c0d;
+  --bg-mid: #141516;
+  --bg-panel: #101112;
+  --bg-sidebar: rgba(13, 14, 15, 0.99);
+  --bg-composer: rgba(12, 13, 14, 0.99);
+  --bg-raised: rgba(255, 255, 255, 0.035);
+  --bg-user-bubble: #242628;
+  --bg-hover: rgba(255, 255, 255, 0.055);
+  --code-bg: rgba(255, 255, 255, 0.035);
 
-  --surface: #0e120e;
-  --surface-2: rgba(16, 20, 16, 0.92);
-  --surface-3: rgba(20, 24, 20, 0.72);
-  --hairline: rgba(255, 255, 255, 0.1);
-  --hairline-strong: rgba(255, 255, 255, 0.18);
+  --surface: #0c0d0e;
+  --surface-2: rgba(15, 16, 17, 0.99);
+  --surface-3: rgba(21, 22, 23, 0.98);
+  --hairline: rgba(255, 255, 255, 0.085);
+  --hairline-strong: rgba(255, 255, 255, 0.15);
 
-  --contrast-bg: #f2f5f1;
-  --contrast-fg: #060806;
+  --contrast-bg: #f1f2f3;
+  --contrast-fg: #101114;
 
-  --edge: rgba(255, 255, 255, 1);
+  --edge: rgba(225, 228, 232, 1);
   --shade: rgba(0, 0, 0, 1);
 
-  --glass-1: rgba(255, 255, 255, 0.04);
-  --glass-2: rgba(255, 255, 255, 0.06);
-  --glass-3: rgba(255, 255, 255, 0.1);
+  --glass-1: rgba(255, 255, 255, 0.025);
+  --glass-2: rgba(255, 255, 255, 0.045);
+  --glass-3: rgba(255, 255, 255, 0.07);
   --glass-bg: var(--glass-1);
-  --glass-border: rgba(255, 255, 255, 0.1);
-  --glass-highlight: rgba(255, 255, 255, 0.12);
+  --glass-border: rgba(255, 255, 255, 0.075);
+  --glass-highlight: rgba(255, 255, 255, 0.085);
 
-  --fg: #f2f5f1;
-  --fg-secondary: #d4d4d8;
-  --fg-muted: #9aa39a;
-  --fg-faint: #6d756d;
-  --ink: #060806;
+  --fg: #f2f3f4;
+  --fg-secondary: #c9cbd0;
+  --fg-muted: #9a9da4;
+  --fg-faint: #777b82;
+  --ink: #17181a;
 
-  --border: rgba(255, 255, 255, 0.1);
-  --border-strong: rgba(255, 255, 255, 0.18);
+  --border: rgba(255, 255, 255, 0.075);
+  --border-strong: rgba(255, 255, 255, 0.14);
 
-  --brand: #f2f5f1;
-  --brand-bright: #ffffff;
-  --brand-deep: #ffffff;
-  --brand-glow: rgba(255, 255, 255, 0.16);
-  --accent: #f2f5f1;
-  --accent-fg: #060806;
-  --gradient-brand: linear-gradient(135deg, #ffffff 0%, #d4d4d8 100%);
+  --brand: #e4e6e8;
+  --brand-bright: #f5f6f7;
+  --brand-deep: #b8bbc0;
+  --brand-glow: rgba(225, 228, 232, 0.1);
+  --accent: #f1f2f3;
+  --accent-fg: #101114;
+  --gradient-brand: linear-gradient(135deg, #ffffff 0%, #e4e6e8 55%, #c6c9ce 100%);
   --gradient-brand-soft: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.08) 0%,
-    rgba(255, 255, 255, 0.02) 100%
+    145deg,
+    rgba(255, 255, 255, 0.075) 0%,
+    rgba(255, 255, 255, 0.028) 60%,
+    rgba(255, 255, 255, 0.012) 100%
   );
-  --gradient-text: linear-gradient(100deg, #ffffff 6%, #d4d4d8 54%, #9aa39a 98%);
+  --gradient-text: linear-gradient(100deg, #f2f3f4 6%, #e0e2e5 56%, #c9cbd0 100%);
 
-  --success: #f2f5f1;
-  --warning: #9aa39a;
-  --danger: #f2f5f1;
+  --success: #5ed6a2;
+  --warning: #f3c16e;
+  --danger: #ff8b92;
 
-  --shadow-glass: 0 0 0 1px rgba(0, 0, 0, 0.55), 0 22px 60px -34px rgba(0, 0, 0, 0.85);
-  --shadow-lift: 0 0 0 1px rgba(0, 0, 0, 0.6), 0 30px 74px -36px rgba(0, 0, 0, 0.9);
-  --shadow-glow: 0 0 0 1px rgba(255, 255, 255, 0.22), 0 10px 26px -14px rgba(0, 0, 0, 0.7);
-  --shadow-glow-strong: 0 0 0 1px rgba(255, 255, 255, 0.34), 0 16px 38px -16px rgba(0, 0, 0, 0.8);
-  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.4), 0 18px 40px -30px rgba(0, 0, 0, 0.8);
-  --inset-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --shadow-glass: 0 0 0 1px rgba(0, 0, 0, 0.62), 0 22px 60px -34px rgba(0, 0, 0, 0.76);
+  --shadow-lift: 0 0 0 1px rgba(0, 0, 0, 0.66), 0 30px 74px -36px rgba(0, 0, 0, 0.82);
+  --shadow-glow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 12px 32px -16px rgba(0, 0, 0, 0.65);
+  --shadow-glow-strong: 0 0 0 1px rgba(255, 255, 255, 0.18), 0 16px 40px -16px rgba(0, 0, 0, 0.72);
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.36), 0 18px 40px -30px rgba(0, 0, 0, 0.68);
+  --inset-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.075);
   --ring: color-mix(in oklab, var(--edge) 26%, transparent);
   --shadow-focus: 0 0 0 3px color-mix(in oklab, var(--fg) 20%, transparent);
 }

@@ -9,17 +9,17 @@ import type {
 } from "../types";
 
 export const DEMO_ASSISTANT_REPLY =
-  "KYN is the local control plane for durable Kiro agents — sessions, channels, approvals, and verified coding handoffs around `kiro-cli acp`.\n\nFrom your message I'd start with the riskiest open work: deployment hardening, channel UX, and workspace lease recovery. Run locally with `uv run kyn serve` to wire this to your real bots.";
+  "Ari brings Kiro, OpenCode, and Codex into one workspace. The Work inbox gathers approvals, coding tasks, workflows, and channel events; cross-engine handoffs carry a useful brief and repository context.\n\nCurrent edges: no pull-request publishing, native Gmail sync, or organization accounts. Remote use needs a protected service and the engine CLIs you choose.";
 
 export const DEMO_TELEGRAM_IN = "Hey — anything blocked on the launch checklist?";
 export const DEMO_TELEGRAM_OUT =
   "Nothing blocking. Checklist is green; I'll watch the deploy thread and ping you if approvals queue up.";
 
 export const DEMO_BOTS: Bot[] = [
-  { name: "chief", cwd: "~/.kyn", model: "Kiro" },
-  { name: "builder", cwd: "~/personal", model: "Kiro" },
-  { name: "reviewer", cwd: "~/personal", model: "Kiro" },
-  { name: "triage", cwd: "~/personal/kyn", agent: "triage" },
+  { name: "chief", cwd: "~/.ari", engine: "kiro" },
+  { name: "builder", cwd: "~/personal", engine: "opencode" },
+  { name: "reviewer", cwd: "~/personal", engine: "codex" },
+  { name: "triage", cwd: "~/personal/ari", engine: "kiro", agent: "triage" },
 ];
 
 export const DEMO_CHANNEL: Channel = {
@@ -49,13 +49,13 @@ export const DEMO_THREADS: Record<string, Part[]> = {
   builder: [
     {
       type: "user",
-      text: "Summarize what this repo does and list the riskiest TODOs.",
+      text: "Summarize Ari's current product and its most important boundaries.",
     },
     {
       type: "reasoning",
       id: "demo-reasoning-1",
       text:
-        "The ask has two halves: what this repo is, and which open TODOs carry the most risk. I'll read the README, look at the daemon entry point, then grep for TODO markers and rank them by blast radius.",
+        "I'll check the product overview, engine registry, and task flow, then compare the current capabilities with the documented boundaries.",
       running: false,
     },
     {
@@ -63,26 +63,26 @@ export const DEMO_THREADS: Record<string, Part[]> = {
       id: "demo-tool-1",
       title: "filesystem.read · README.md",
       status: "done",
-      detail: "Read 214 lines from README.md (install, daemon, channels, workflows).",
+      detail: "Reviewed the product overview, current workflows, and setup notes.",
     },
     {
       type: "tool",
       id: "demo-tool-2",
-      title: "search.grep · TODO|FIXME",
+      title: "source.review · product boundaries",
       status: "done",
-      detail: "src/kyn/server.py:412  TODO: harden remote deploy auth\nsrc/kyn/channels.py:88  TODO: group mention routing\nsrc/kyn/workspaces.py:301  FIXME: lease recovery on restart",
+      detail: "Kiro, OpenCode, Codex · Work inbox · reviewed Git tasks · current product gaps",
     },
     {
       type: "tool",
       id: "demo-tool-3",
       title: "shell.exec · uv run pytest -q",
       status: "done",
-      detail: "192 passed, 1 warning in 44.42s",
+      detail: "Checks complete in the staged product preview.",
     },
     {
       type: "assistant-text",
       text:
-        "This is a local control plane for durable Kiro agents. It owns sessions, channels, approvals, and verified coding handoffs around `kiro-cli acp`.\n\nRiskiest TODOs:\n1. Harden remote deployment auth\n2. Expand Telegram group mention UX\n3. Document workspace lease recovery",
+        "Ari is a shared workspace for Kiro, OpenCode, and Codex. It brings together bots, handoffs, a work inbox, MCP plugins, channels, schedules, and reviewable Git tasks.\n\nCurrent product gaps:\n1. Pull-request publishing and CI follow-up\n2. Native Gmail synchronization\n3. Organization accounts and SSO",
     },
   ],
   reviewer: [],
@@ -153,7 +153,7 @@ export function demoManagementData(): ManagementData {
       },
     ],
     plugins: [
-      { id: "kiro-control", name: "KYN control", transport: "stdio" },
+      { id: "kiro-control", name: "Ari control", transport: "stdio" },
       { id: "filesystem", name: "Filesystem", transport: "stdio" },
     ],
     bindings: [
@@ -217,7 +217,7 @@ export function demoManagementData(): ManagementData {
     ],
     channels: [
       DEMO_CHANNEL,
-      { id: "demo-github", name: "Kyn repo events", kind: "github", enabled: false, outbound_delivery_configured: true },
+      { id: "demo-github", name: "Ari repo events", kind: "github", enabled: false, outbound_delivery_configured: true },
     ],
     channelEvents: [
       ...DEMO_CHANNEL_EVENTS,
@@ -235,9 +235,24 @@ export function demoManagementData(): ManagementData {
     ],
     memoryRecords: [
       {
-        request_text: "Summarize what this repo does and list the riskiest TODOs.",
-        response_text: "Local control plane for durable Kiro agents with governed handoffs.",
+        request_text: "Summarize Ari's current product and its most important boundaries.",
+        response_text: "Shared workspace for Kiro, OpenCode, and Codex with reviewed handoffs.",
         scope: "local:builder",
+        created_at: "2026-08-26T11:55:00Z",
+      },
+    ],
+    memoryFacts: [
+      {
+        id: "demo-fact-1",
+        bot_name: "builder",
+        fact: "Deploys happen on Fridays.",
+        entities: ["deploys"],
+        source: "",
+        actor: "demo",
+        pinned: true,
+        valid_from: "2026-08-26T11:55:00Z",
+        invalid_at: null,
+        superseded_by: null,
         created_at: "2026-08-26T11:55:00Z",
       },
     ],
@@ -248,9 +263,9 @@ export function demoResponseFor(message: string): string {
   const lower = message.toLowerCase();
   if (lower.includes("todo")) return DEMO_ASSISTANT_REPLY;
   if (lower.includes("summarize") || lower.includes("summary")) {
-    return "KYN wraps `kiro-cli acp` with durable bots, governed tool approval, channels, schedules, and team workflows. This preview mirrors the real console — connect a local daemon to run against your repos.";
+    return "Ari brings Kiro, OpenCode, and Codex into one workspace for bots, approvals, channels, schedules, team workflows, and reviewable coding tasks. This preview mirrors the control room; connect a local service to work with your repos.";
   }
-  return `Demo reply from ${message.trim().slice(0, 48)}${message.length > 48 ? "…" : ""}: KYN keeps persistent native-engine sessions, routes work through policies, and streams live activity here. Install locally to run the real agent.`;
+  return `Demo reply from ${message.trim().slice(0, 48)}${message.length > 48 ? "…" : ""}: Ari keeps your agents, work, integrations, and review steps together. Connect a local service to run real work.`;
 }
 
 export function demoDelegationDetail(planId: string): DelegationDetail | null {
@@ -325,5 +340,5 @@ export const DEMO_GROUP_DETAIL: GroupDetail = {
 };
 
 export function demoGroupReply(message: string, author: string): string {
-  return `${author} here — noted: “${message.trim().slice(0, 60)}${message.length > 60 ? "…" : ""}”. I'll fold that into the shared aim and hand the next step to the room. Run \`uv run kyn serve\` to see real bots take turns.`;
+  return `${author} here — noted: “${message.trim().slice(0, 60)}${message.length > 60 ? "…" : ""}”. I'll fold that into the shared aim and hand the next step to the room. Run \`uv run ari serve\` to see real bots take turns.`;
 }

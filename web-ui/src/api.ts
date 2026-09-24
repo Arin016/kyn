@@ -10,9 +10,14 @@ import type {
   GroupMessage,
   Interaction,
   MemoryRecord,
+  MemoryFact,
   Plugin,
+  PluginPlaceTemplate,
+  PluginSecrets,
   Policy,
   Routine,
+  Task,
+  TaskDiff,
 } from "./types";
 import { accessToken, apiBase } from "./lib/deploy";
 
@@ -28,7 +33,7 @@ function sanitizeApiError(body: string, status: number): string {
     trimmed.includes("<script") ||
     trimmed.length > 500
   ) {
-    return "KYN backend is not reachable from this site. Run locally with `uv run kyn serve`.";
+    return "Ari backend is not reachable from this site. Run locally with `uv run ari serve`.";
   }
   return trimmed.length > MAX_ERROR_CHARS ? `${trimmed.slice(0, MAX_ERROR_CHARS)}…` : trimmed;
 }
@@ -69,6 +74,19 @@ export interface DirectoryListing {
   entries: DirectoryEntry[];
 }
 
+export interface SetupEngine {
+  id: "kiro" | "opencode" | "codex";
+  label: string;
+  available: boolean;
+  binary: string;
+  version: string;
+}
+
+export interface SetupStatus {
+  platform: string;
+  engines: SetupEngine[];
+}
+
 export interface BotUsage {
   bot: string;
   turns: number;
@@ -77,6 +95,12 @@ export interface BotUsage {
 }
 
 export const api = {
+  setupStatus: () => request<SetupStatus>("/api/setup/status"),
+  installEngine: (engine: SetupEngine["id"]) =>
+    request<{ id: string; label: string; binary: string; output: string }>(
+      `/api/setup/install/${encodeURIComponent(engine)}`,
+      { method: "POST" },
+    ),
   listBots: () => request<unknown>("/api/bots"),
   engines: (engine: string) =>
     request<{ engine: string; models: { id: string; label: string }[] }>(
@@ -110,12 +134,45 @@ export const api = {
     request<{ events: MemoryRecord[] }>(
       `/api/bots/${encodeURIComponent(bot)}/memory?limit=50`,
     ),
+  memoryFacts: (bot: string, includeInvalid = false) =>
+    request<{ bot: string; facts: MemoryFact[] }>(
+      `/api/bots/${encodeURIComponent(bot)}/memory/facts?limit=100${includeInvalid ? "&include_invalid=true" : ""}`,
+    ),
+  rememberFact: (bot: string, fact: string) =>
+    request<MemoryFact>(`/api/bots/${encodeURIComponent(bot)}/memory/facts`, {
+      method: "POST",
+      body: JSON.stringify({ fact, actor: "ui" }),
+    }),
+  forgetFact: (bot: string, id: string) =>
+    request(`/api/bots/${encodeURIComponent(bot)}/memory/facts/${encodeURIComponent(id)}/forget`, {
+      method: "POST",
+    }),
+  pinFact: (bot: string, id: string, pinned: boolean) =>
+    request(`/api/bots/${encodeURIComponent(bot)}/memory/facts/${encodeURIComponent(id)}/pin`, {
+      method: "POST",
+      body: JSON.stringify({ pinned }),
+    }),
+  enableDreaming: (bot: string) =>
+    request(`/api/bots/${encodeURIComponent(bot)}/memory/dream`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
   usage: (bot: string) =>
     request<BotUsage>(`/api/bots/${encodeURIComponent(bot)}/usage?limit=50`),
   submitTurn: (bot: string, message: string) =>
     request<{ run_id?: string; id?: string; run?: { id?: string } }>(
       `/api/bots/${encodeURIComponent(bot)}/turns`,
       { method: "POST", body: JSON.stringify({ message }) },
+    ),
+  retryTurn: (bot: string, turnId: number | string, message?: string) =>
+    request<{ run_id?: string; id?: string; run?: { id?: string } }>(
+      `/api/bots/${encodeURIComponent(bot)}/turns/${encodeURIComponent(String(turnId))}/retry`,
+      { method: "POST", body: JSON.stringify(message ? { message } : {}) },
+    ),
+  forkTurn: (bot: string, turnId: number | string, toBot: string) =>
+    request<{ run_id?: string; id?: string; run?: { id?: string }; to_bot?: string }>(
+      `/api/bots/${encodeURIComponent(bot)}/turns/${encodeURIComponent(String(turnId))}/fork`,
+      { method: "POST", body: JSON.stringify({ to_bot: toBot }) },
     ),
   routines: () => request<Routine[]>("/api/routines"),
   createRoutine: (payload: Record<string, unknown>) =>
@@ -149,6 +206,20 @@ export const api = {
     request(`/api/bots/${encodeURIComponent(bot)}/plugins/${encodeURIComponent(pluginId)}`, {
       method: "DELETE",
     }),
+  pluginCatalog: () => request<PluginPlaceTemplate[]>("/api/plugin-place/catalog"),
+  installPlacePlugin: (payload: { template_id: string; bot_names: string[]; config: Record<string, string> }) =>
+    request(`/api/plugin-place/install`, { method: "POST", body: JSON.stringify(payload) }),
+  pluginSecrets: (pluginId: string) =>
+    request<PluginSecrets>(`/api/plugins/${encodeURIComponent(pluginId)}/secrets`),
+  setPluginSecret: (pluginId: string, name: string, value: string) =>
+    request(`/api/plugins/${encodeURIComponent(pluginId)}/secrets`, {
+      method: "POST",
+      body: JSON.stringify({ name, value }),
+    }),
+  deletePluginSecret: (pluginId: string, name: string) =>
+    request(`/api/plugins/${encodeURIComponent(pluginId)}/secrets/${encodeURIComponent(name)}`, {
+      method: "DELETE",
+    }),
   audit: (bot: string) =>
     request<AuditItem[]>(`/api/audit?bot_name=${encodeURIComponent(bot)}&limit=8`),
   delegations: () => request<DelegationPlan[]>("/api/delegations"),
@@ -160,6 +231,22 @@ export const api = {
   cancelDelegation: (id: string) =>
     request(`/api/delegations/${encodeURIComponent(id)}/cancel`, { method: "POST" }),
   codingExecutions: () => request<CodingExecution[]>("/api/coding-executions"),
+  runs: (limit = 100) => request<import("./types").RunSummary[]>(`/api/runs?limit=${limit}`),
+  run: (id: string) => request<import("./types").RunDetail>(`/api/runs/${encodeURIComponent(id)}`),
+  tasks: () => request<Task[]>("/api/tasks"),
+  task: (id: string) => request<Task>(`/api/tasks/${encodeURIComponent(id)}`),
+  createTask: (payload: Record<string, unknown>) =>
+    request<Task>("/api/tasks", { method: "POST", body: JSON.stringify(payload) }),
+  taskDiff: (id: string) => request<TaskDiff>(`/api/tasks/${encodeURIComponent(id)}/diff`),
+  mergeTask: (id: string, message?: string) =>
+    request<{ merged: boolean; commit: string }>(`/api/tasks/${encodeURIComponent(id)}/merge`, {
+      method: "POST",
+      body: JSON.stringify(message ? { message } : {}),
+    }),
+  abandonTask: (id: string) =>
+    request<{ abandoned: boolean }>(`/api/tasks/${encodeURIComponent(id)}/abandon`, {
+      method: "POST",
+    }),
   createCodingExecution: (payload: Record<string, unknown>) =>
     request("/api/coding-executions", { method: "POST", body: JSON.stringify(payload) }),
   approveCodingExecution: (id: string, expectedVersion?: number) =>
@@ -169,7 +256,8 @@ export const api = {
     }),
   cancelCodingExecution: (id: string) =>
     request(`/api/coding-executions/${encodeURIComponent(id)}/cancel`, { method: "POST" }),
-  channels: (bot: string) => request<Channel[]>(`/api/channels?bot_name=${encodeURIComponent(bot)}`),
+  channels: (bot?: string) =>
+    request<Channel[]>(bot ? `/api/channels?bot_name=${encodeURIComponent(bot)}` : "/api/channels"),
   createChannel: (payload: Record<string, unknown>) =>
     request("/api/channels", { method: "POST", body: JSON.stringify(payload) }),
   patchChannel: (id: string, payload: Record<string, unknown>) =>
@@ -223,9 +311,9 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ decision }),
     }),
-  interactions: (bot: string, status = "pending") =>
+  interactions: (bot?: string, status = "pending") =>
     request<Interaction[]>(
-      `/api/interactions?bot_name=${encodeURIComponent(bot)}&status=${encodeURIComponent(status)}`,
+      `/api/interactions?${bot ? `bot_name=${encodeURIComponent(bot)}&` : ""}status=${encodeURIComponent(status)}`,
     ),
   decideInteraction: (interactionId: string, decision: string) =>
     request<Interaction>(`/api/interactions/${encodeURIComponent(interactionId)}/decide`, {

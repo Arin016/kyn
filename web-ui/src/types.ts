@@ -1,10 +1,35 @@
 export interface Bot {
   name: string;
   cwd?: string;
+  engine?: string;
   model?: string;
   agent?: string;
   effort?: string;
-  engine?: string;
+  brief?: string;
+}
+
+export interface PluginPlaceTemplate {
+  id: string;
+  name: string;
+  blurb: string;
+  docs_url: string;
+  transport: string;
+  installed: boolean;
+  missing_secrets: string[];
+  warning?: string;
+  config_schema: {
+    key: string;
+    label: string;
+    required: boolean;
+    secret: boolean;
+    placeholder?: string;
+    hint?: string;
+  }[];
+}
+
+export interface PluginSecrets {
+  plugin_id: string;
+  secrets: string[];
 }
 
 export interface StoredEvent {
@@ -15,6 +40,7 @@ export interface StoredEvent {
 }
 
 export interface HistoryTurn {
+  id?: number;
   prompt?: string;
   message?: string;
   input?: string;
@@ -101,6 +127,31 @@ export interface Interaction {
   decided_by: string;
   created_at: string;
   resolved_at: string;
+}
+
+export interface RunSummary {
+  id: string;
+  bot_name: string;
+  message: string;
+  actor?: string;
+  engine?: string;
+  status: string;
+  error?: string;
+  created_at?: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+}
+
+export interface RunDetail extends RunSummary {
+  stop_reason?: string;
+  events?: {
+    sequence?: number;
+    kind?: string;
+    text?: string;
+    title?: string;
+    tool_name?: string;
+    stop_reason?: string;
+  }[];
 }
 
 export interface TimelineEntry {
@@ -190,6 +241,10 @@ export interface CodingExecution {
   id: string;
   status: string;
   version?: number;
+  error?: string;
+  created_at?: string;
+  updated_at?: string;
+  finished_at?: string;
   spec?: {
     task?: string;
     builder_bot?: string;
@@ -201,11 +256,42 @@ export interface CodingExecution {
   result?: { repair_attempts_used?: number };
 }
 
+export interface Task {
+  id: string;
+  status: string;
+  task_status: "open" | "merged" | "abandoned";
+  version?: number;
+  builder_bot?: string;
+  reviewer_bot?: string;
+  repo_path?: string;
+  branch?: string;
+  base?: string;
+  task?: string;
+  error?: string;
+  created_at?: string;
+  updated_at?: string;
+  finished_at?: string;
+  worktree_path?: string | null;
+  files?: { path: string; status: string }[];
+  checks?: { name: string; status: "pending" | "passed" | "failed" | "timeout" | "unknown"; duration_seconds?: number }[];
+  review?: { approved?: boolean; summary?: string; findings?: string[]; blocking_findings?: string[] } | null;
+}
+
+export interface TaskDiff {
+  id: string;
+  branch?: string;
+  base?: string;
+  files: { path: string; status: string }[];
+  diff: string;
+  truncated: boolean;
+}
+
 export interface Channel {
   id: string;
   name: string;
   kind: string;
   enabled: boolean;
+  bot_name?: string;
   outbound_delivery_configured?: boolean;
 }
 
@@ -230,10 +316,26 @@ export interface MemoryRecord {
   created_at?: string;
 }
 
+export interface MemoryFact {
+  id: string;
+  bot_name: string;
+  fact: string;
+  entities: string[];
+  source: string;
+  actor: string;
+  pinned: boolean;
+  valid_from: string;
+  invalid_at: string | null;
+  superseded_by: string | null;
+  created_at: string;
+}
+
 export type LiveMessage =
   | { type: "hello" }
   | { type: "ping" }
-  | { type: "channel_event"; channel?: { id?: string; kind?: string }; event: ChannelEvent };
+  | { type: "channel_event"; channel?: { id?: string; kind?: string }; event: ChannelEvent }
+  /** Roster push: a bot or group was created/updated/deleted — re-read that scope now. */
+  | { type: "roster"; scope: "bots" | "groups"; action: "created" | "updated" | "deleted"; name: string };
 
 export type StreamEnvelope = {
   type?: string;

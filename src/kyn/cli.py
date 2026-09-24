@@ -13,7 +13,7 @@ from .store import Bot, Store
 
 
 def parser() -> argparse.ArgumentParser:
-    root = argparse.ArgumentParser(prog="kyn", description="KYN — persistent local agents on ACP engines")
+    root = argparse.ArgumentParser(prog="ari", description="Ari — your crew of persistent coding helpers")
     commands = root.add_subparsers(dest="command", required=True)
 
     bot = commands.add_parser("bot", help="manage named bots")

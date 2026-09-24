@@ -1,111 +1,74 @@
-# Always-on hosting
+# Run Ari locally or remotely
 
-KYN is local-first: the full product is a long-running Python daemon with SQLite,
-WebSockets, and `kiro-cli` on the host. You can still run it **always on** in the
-cloud with a small Fly.io deployment, and keep a fast marketing site on Vercel.
+Ari's macOS app is the simplest way to run the product. It starts the service on
+your Mac and stores its data locally. Keep that Mac online for schedules and
+incoming channel events. For phone or tablet access, use a private Tailscale
+connection; see [desktop-app.md](desktop-app.md).
 
-## Architecture
+The service can also run on a server you control. Remote hosting requires the
+selected engine CLIs, their own account sign-ins, persistent storage, and a
+protected API. The stock container does not install or sign in to Kiro,
+OpenCode, or Codex for you.
 
-```text
-Vercel (optional)          Fly.io (always on)
-landing + UI SPA  ----API-->  kyn serve + SQLite volume
-                              + built React UI at /app/
-```
+## Fly.io
 
-| Surface | URL | What runs |
-| --- | --- | --- |
-| **Full product (recommended)** | `https://<your-app>.fly.dev/` | UI + API + data on Fly |
-| **Marketing only** | `https://<project>.vercel.app` | Static landing; install instructions |
-| **Split** | Vercel UI + Fly API | Set `VITE_KYN_API_URL` on Vercel |
-
-Agent work still requires **`kiro-cli`** on the machine that runs the daemon.
-The stock Docker image does not include it. Install it on a custom image, or use
-Fly for the control plane and keep agents on your laptop.
-
-## 1. Fly.io — full KYN (always on)
-
-Prerequisites: [Fly CLI](https://fly.io/docs/hands-on/install-flyctl/), a Fly account.
+The repository includes a Fly configuration and helper script. Install and
+authenticate the [Fly CLI](https://fly.io/docs/flyctl/), then run:
 
 ```bash
-# From the repo root
-fly auth login
-
-# Create app + volume (pick your own app name if "kyn" is taken)
-fly apps create kyn
-fly volumes create kyn_data --region iad --size 1
-
-# Required: protect the public API
-fly secrets set KYN_ACCESS_TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
-
-# Deploy
-fly deploy
+./scripts/deploy-fly.sh
 ```
 
-Open:
+The script creates the `kyn` app and `kyn_data` volume when needed, sets a
+`KYN_ACCESS_TOKEN` if one is not already configured, and deploys the service.
+The script prints the generated token; save it securely. The web app accepts it
+in the session-scoped URL below or as a bearer token for API clients:
 
 ```text
-https://<your-app>.fly.dev/app/?token=<your-KYN_ACCESS_TOKEN>
+https://kyn.fly.dev/app/?token=<your-token>
 ```
 
-The `token` query param is saved in the browser session and used for API and
-WebSocket calls. You can also send `Authorization: Bearer <token>` from scripts.
+Before sending agent work, install the ACP engines you plan to use on the host,
+sign in to each engine using its own instructions, and configure any MCP/channel
+secrets for that service. The default image does not bundle those CLIs. Keep the
+Fly volume mounted at `/data` so Ari's SQLite state and workspaces persist.
 
-Create a bot (cwd must exist inside the container — use `/app` or a mounted path):
+The API supports `KYN_ALLOWED_ORIGINS` for browser origin checks. Keep the
+access token private, use HTTPS, and review the network path before making the
+service available to other people. Channel webhooks use their provider
+signatures; they are not authenticated by the Ari API bearer token.
 
-```bash
-TOKEN=<your-token>
-fly ssh console -C "uv run kyn bot create builder --cwd /app"
-```
+## Vercel
 
-For real agent runs, install and sign in to `kiro-cli` on the Fly machine (custom
-Docker layer or `fly ssh console` setup). Without it, the UI and schedules work;
-ACP turns fail with “kiro-cli is not installed”.
+Vercel serves the marketing pages from the React app. The default build shows
+the landing and product engineering pages. It does not provide a hosted Ari
+service or agent engines by itself.
 
-### Health and persistence
+For a split setup, point the Vercel UI at a separately protected Ari service
+with these build-time variables:
 
-- Health: `GET /api/health` (no auth)
-- Data: SQLite and workspaces under `/data` (Fly volume `kyn_data`)
-- Machine stays up: `min_machines_running = 1` in `fly.toml`
-
-## 2. Vercel — marketing site (always on)
-
-Connect the GitHub repo in the Vercel dashboard. Root `vercel.json` builds the
-static SPA from `web-ui/`.
-
-**Default:** landing + engineering only; “Start with a bot” scrolls to local install.
-
-**Connected console (UI on Vercel, API on Fly):** in Vercel → Settings → Environment Variables:
-
-| Variable | Example |
+| Variable | Purpose |
 | --- | --- |
-| `VITE_KYN_API_URL` | `https://kyn.fly.dev` |
-| `VITE_KYN_ACCESS_TOKEN` | same as `KYN_ACCESS_TOKEN` on Fly |
+| `VITE_KYN_API_URL` | Base URL of the Ari service |
+| `VITE_KYN_ACCESS_TOKEN` | Bearer token for that service |
 
-On Fly, also set:
+Add the Vercel domain to `KYN_ALLOWED_ORIGINS` on the service and rebuild the
+Vercel site after changing its variables. The hosting project retains the
+historical `KYN` variable names for compatibility; the product is Ari.
 
-```bash
-fly secrets set KYN_ALLOWED_ORIGINS="https://your-project.vercel.app"
-```
-
-Redeploy Vercel after changing env vars (they are baked at build time).
-
-## 3. Local development (unchanged)
+## Local development
 
 ```bash
-npm --prefix web-ui install && npm --prefix web-ui run build
+npm --prefix web-ui install
+npm --prefix web-ui run build
 uv sync --extra server --extra dev
-uv run kyn serve
+uv run ari serve
 ```
 
-Open `http://127.0.0.1:8765/`.
-
-## Security notes
-
-- Never expose `kyn serve` on `0.0.0.0` without `KYN_ACCESS_TOKEN`.
-- Channel webhooks (`/hooks/*`) keep their own provider signatures; they are not
-  gated by `KYN_ACCESS_TOKEN`.
-- Do not commit `.env` or Fly secrets.
+Open `http://127.0.0.1:8765/`. The service binds to loopback by default. The
+CLI refuses unauthenticated non-loopback binding; configure `KYN_ACCESS_TOKEN`
+before serving on a network interface.
 
 ## Environment reference
 
-See [.env.example](../.env.example) for all variables.
+See [.env.example](../.env.example) for supported environment variables.

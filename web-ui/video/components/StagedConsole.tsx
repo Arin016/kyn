@@ -1,5 +1,5 @@
 import React from "react";
-import { KiroGlyph } from "../../src/components/KiroGlyph";
+import { AriGlyph } from "../../src/components/AriGlyph";
 import { Sidebar } from "../../src/components/Sidebar";
 import { Thread } from "../../src/components/chat/Thread";
 import type { Part } from "../../src/components/chat/Message";
@@ -84,7 +84,7 @@ export const StagedConsole: React.FC<Props> = ({ snapshot }) => {
         <header className="header">
           <div className="header-brand">
             <span className="header-logo" aria-hidden>
-              <KiroGlyph size={20} />
+              <AriGlyph size={20} />
             </span>
             <span
               style={{
@@ -119,12 +119,14 @@ export const StagedConsole: React.FC<Props> = ({ snapshot }) => {
         <div className="thread-scroll">
           <Thread
             parts={snapshot.parts}
+            emptyEyebrow="Ari · AGENT WORKSPACE"
             emptyGreeting={snapshot.emptyGreeting}
+            emptyDescription="Give your bot a clear task, then steer or review its work as it goes."
             suggestions={[
-              "Summarize what this repo does",
-              "What changed here recently?",
-              "Find TODOs and rank them by urgency",
-              "Write tests for the riskiest module",
+              { title: "Understand this project", detail: "Get a quick map of what it does", prompt: "Summarize what this repo does" },
+              { title: "Review recent changes", detail: "Spot risk in the latest work", prompt: "What changed here recently?" },
+              { title: "Rank open TODOs", detail: "Find the most urgent unfinished work", prompt: "Find TODOs and rank them by urgency" },
+              { title: "Add a safety net", detail: "Test the riskiest paths", prompt: "Write tests for the riskiest module" },
             ]}
             onSuggestion={noop}
             onApproval={noop}

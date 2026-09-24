@@ -1,6 +1,6 @@
 # External channels
 
-External channels let a named KYN receive work from another system while
+External channels let a named Ari receive work from another system while
 keeping the source conversation attached. Every accepted provider event passes
 through the same Engine as browser and CLI turns, so governance, quotas,
 permissions, persistence and cancellation still apply.
@@ -28,10 +28,10 @@ permissions, persistence and cancellation still apply.
   shared-memory ledger. A bounded relevance-and-recency bundle from other
   surfaces can be supplied for continuity; the current source thread is
   excluded because its authoritative history is already present.
-- Each external turn uses a fresh, non-persisted Kiro ACP session with the
-  selected bot's configuration. Only the bounded source-thread history and
+- Each external turn uses a fresh, non-persisted ACP session for the selected
+  bot's engine and configuration. Only bounded source-thread history and
   explicitly retrieved shared evidence are supplied, preventing unrelated
-  remote threads from inheriting an entire ACP transcript.
+  remote threads from inheriting an entire engine transcript.
 - Retrieved cross-surface text is marked as historical, potentially untrusted
   evidence rather than instructions. Raw provider payloads, configured secret
   values, tool payloads and permission decisions are not copied into shared
@@ -49,7 +49,7 @@ and select **Add**. For example:
 ```bash
 export KIRO_SLACK_SIGNING_SECRET='replace-with-your-signing-secret'
 export KIRO_SLACK_BOT_TOKEN='replace-with-your-bot-token'
-uv run kyn serve
+uv run ari serve
 ```
 
 Enter `KIRO_SLACK_SIGNING_SECRET` and `KIRO_SLACK_BOT_TOKEN` in the form—not the
@@ -64,7 +64,7 @@ https://your-host/hooks/webhook/<connection-id>
 ```
 
 Telegram has no `/hooks/telegram/...` URL. The daemon long-polls Telegram while
-`kyn serve` is running.
+`ari serve` is running.
 
 The server still binds to loopback by default. Put it behind an authenticated,
 TLS-terminating ingress before accepting internet traffic. Do not expose the
@@ -73,7 +73,7 @@ local daemon directly.
 For local testing, run the separate hooks-only relay in a second terminal:
 
 ```bash
-uv run kyn serve-hooks
+uv run ari serve-hooks
 ```
 
 It listens on `127.0.0.1:8766`, forwards only authenticated `/hooks/*` requests
@@ -109,7 +109,7 @@ On the laptop:
 
 ```bash
 export KIRO_TELEGRAM_BOT_TOKEN='123456789:replace-with-the-botfather-token'
-uv run kyn serve
+uv run ari serve
 ```
 
 Create a **Telegram** channel. Enter `KIRO_TELEGRAM_BOT_TOKEN` as the signing
@@ -136,7 +136,7 @@ phrase and ignores bot accounts. The GitHub delivery ID provides deduplication.
 
 Set an outbound token environment variable with permission to create issue
 comments to deliver the bot's response back to the issue or pull-request
-conversation. This channel does not push code or merge anything.
+conversation. Code changes follow the separate reviewable task flow.
 
 ## WhatsApp
 
@@ -161,7 +161,7 @@ secret. These are deliberately different credentials.
 Inbound text, interactive button/list replies, button messages and captioned
 image/video/document messages are normalized. Delivery/status notifications,
 unsupported media-only messages and malformed payloads are acknowledged but do
-not invoke Kiro. Each business phone-number ID and sender number forms a stable
+not start a bot run. Each business phone-number ID and sender number forms a stable
 source thread; the WhatsApp message ID supplies deduplication.
 
 When the access-token environment variable is configured, the response is sent

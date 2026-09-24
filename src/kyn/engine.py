@@ -384,7 +384,7 @@ class BotWorker:
 
 
 class Engine:
-    """Long-running, in-memory run coordinator for persistent KYN bots.
+    """Long-running, in-memory run coordinator for persistent Ari bots.
 
     Each bot gets exactly one worker and therefore one active turn at a time.
     Workers are independent, so separate bots can run concurrently. Completed
@@ -527,6 +527,11 @@ class Engine:
                 brief=bot.brief,
             ),
         )
+        if not model:
+            # Clearing the selected model is an explicit reset. Drop the
+            # resume pointer so Kiro's saved session cannot restore its old
+            # model; ordinary blank-model startups still resume normally.
+            await asyncio.to_thread(self._store.delete_conversation, bot.name)
         worker = self._workers.get(bot_name)
         if worker is None:
             return {"model": model, "applied_live": False}
@@ -688,7 +693,6 @@ class Engine:
                     self._memory.render_context,
                     run.bot_name,
                     run.message,
-                    exclude_scopes=(scope,),
                 )
             except Exception:
                 _logger.exception("Shared-memory retrieval failed for run %s", run.id)
@@ -772,7 +776,7 @@ class Engine:
         except OSError as exc:
             os.close(descriptor)
             raise RuntimeError(
-                "another KYN controller is already active for this data store"
+                "another Ari controller is already active for this data store"
             ) from exc
         self._store_lock_fd = descriptor
 
@@ -979,9 +983,45 @@ class Engine:
         if run is not None:
             return run.snapshot()
         durable = await self._get_durable_run(run_id)
-        if durable is not None and durable.status in _TERMINAL_STATUSES:
+        if durable is not None:
             return _durable_snapshot(durable)
         raise RunNotFound(run_id)
+
+    async def list_runs(self, *, limit: int = 100) -> list[dict[str, Any]]:
+        """Return compact recent run summaries, newest first, across restarts."""
+        bounded = min(max(int(limit), 1), 500)
+        summaries: dict[str, dict[str, Any]] = {}
+        if self._run_repository is not None:
+            durable = await asyncio.to_thread(
+                self._run_repository.list_runs,
+                limit=bounded,
+                newest_first=True,
+            )
+            summaries.update(
+                (item.run_id, _durable_snapshot(item)) for item in durable
+            )
+        # In-memory snapshots carry the freshest state and live provider/error
+        # fields. Strip streamed events: the inbox only needs a short summary.
+        for run in self._runs.values():
+            if run.id in summaries or not run.terminal:
+                snapshot = run.snapshot()
+                snapshot.pop("events", None)
+                summaries[run.id] = snapshot
+        result = sorted(
+            summaries.values(),
+            key=lambda item: (str(item.get("created_at") or ""), str(item.get("id") or "")),
+            reverse=True,
+        )[:bounded]
+        for item in result:
+            item.pop("events", None)
+        if self._store is not None:
+            engines = {
+                bot.name: bot.engine
+                for bot in await asyncio.to_thread(self._store.list_bots)
+            }
+            for item in result:
+                item["engine"] = engines.get(str(item.get("bot_name") or ""), item.get("engine", ""))
+        return result
 
     def active_run_for(self, bot_name: str) -> dict[str, Any] | None:
         """Newest in-flight run snapshot for a bot, if the engine holds one.

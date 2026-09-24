@@ -1,44 +1,41 @@
-# KYN
+# Ari
 
-<img src="web-ui/public/brand-mark.svg" alt="KYN night ghost logo" width="88" />
+<img src="web-ui/public/brand-mark.svg" alt="Ari's crew of coding helpers" width="88" />
 
-**Beyond the terminal.**
+**Your agents. One steady crew.**
 
-KYN is the local control plane for persistent coding-agent bots, recurring work,
-and governed coding handoffs. Create named agents with clear jobs, reach them
-from your browser or phone, run several at once, and keep consequential actions
-behind deterministic boundaries. Each bot runs one native engine: Kiro, OpenCode,
-or Codex.
+Ari brings Kiro, OpenCode, and Codex into one workspace. Route work to the right
+bot, keep tasks and approvals in view, and carry useful context between engines.
+Each engine keeps its own account, model access, and native tool execution.
 
-![KYN control room](docs/screenshots/kyn-home-desktop.png)
+![Ari landing page](docs/screenshots/ari-landing-desktop.png)
 
-The native engine reasons, writes code, and uses tools. KYN launches that
-engine's ACP process (`kiro-cli acp`, `opencode acp`, or a Codex ACP bridge)
-and owns the durable product layer around it:
-identity, conversations, memory, queues, channels, schedules, approvals,
-workspaces, and orchestration.
+The selected engine reasons, writes code, and uses its native tools. Ari owns the
+product layer around it: bot identity, conversations, memory, work queues,
+channels, schedules, approvals, coding tasks, plugins, and orchestration. Ari
+also supports cross-engine handoff with a bounded brief and repository context.
 
 See [docs/positioning.md](docs/positioning.md) for the product promise, proof
 points, voice, and honest boundaries.
 
 **Live site:** [kyn-blush.vercel.app](https://kyn-blush.vercel.app) — marketing
-landing and engineering page (always on). The full control room runs on your
-machine with `kyn serve`, or on Fly.io for 24/7 hosting ([docs/deploy.md](docs/deploy.md)).
+landing and How Ari works page (always on). The full control room runs on your
+machine with `ari serve`, or on Fly.io for long-running hosting ([docs/deploy.md](docs/deploy.md)).
 
 ## What works now
 
-- Start and initialize a local Kiro ACP runtime.
-- Create or resume a Kiro session.
-- Stream text, thinking, tool, usage, and raw ACP events.
+- Start Kiro, OpenCode, or Codex ACP engines, selected per bot.
+- Create and continue bot conversations through the selected engine.
+- Stream normalized text, tool activity, and usage events.
 - Ask the human before approving tool calls.
 - Cancel an active turn.
-- Persist named bots, Kiro session IDs, turns, and events in SQLite.
+- Persist named bots, engine session identifiers, turns, and events in SQLite.
 - Continue the same named bot across separate CLI invocations.
 - Keep one long-running worker per bot with FIFO turns.
 - Run different bots concurrently.
 - Stream runs over WebSocket with reconnect-safe sequence cursors.
 - Approve once, reject, or cancel from the browser. Persistent grants are
-  governed centrally through the Safety policy instead of Kiro-side bypasses.
+  governed centrally through the Safety policy instead of provider-side bypasses.
 - Persist each pending human gate independently of the live stream. Reload the
   control room and the exact action is still actionable; there is no blanket
   "trust this run" shortcut.
@@ -47,6 +44,8 @@ machine with `kyn serve`, or on Fly.io for 24/7 hosting ([docs/deploy.md](docs/d
   a bounded relevance-and-recency evidence bundle across local chat and remote
   channels, and inspect the exact cross-surface records in the Memory panel.
 - Use a responsive local control room on desktop or mobile widths.
+- Review pending approvals, bot runs, coding tasks, workflows, and channel events
+  together in the Work inbox, with direct links to the relevant review surface.
 - Schedule durable one-time or repeating routines with lease-safe dispatch.
 - Configure deterministic tool approval policies and hourly, daily, or
   concurrent run quotas per bot.
@@ -68,12 +67,10 @@ machine with `kyn serve`, or on Fly.io for 24/7 hosting ([docs/deploy.md](docs/d
   A named bot can also call a different durable bot for one focused result.
 - Create detached per-run Git worktrees, retain material output, and record
   bounded SHA-256 artifact manifests without force-cleaning user work.
-- Run a durable, idempotent coding lifecycle in an isolated worktree: Kiro
-  builds, deterministic checks verify, bounded Kiro repair turns correct
-  failures, and a different bot independently reviews the result.
-- Detect reviewer mutations, preserve the source checkout, retain the reviewed
-  artifact manifest, and stop at an explicit human handoff. This layer never
-  pushes, opens a pull request, merges, or publishes on its own.
+- Run reviewable coding tasks on isolated branches and worktrees, with checks,
+  bounded repair, and an independent reviewer.
+- Review task files and diffs, then approve before merging into the selected
+  local base branch. Ari does not open pull requests or publish changes.
 - Invoke any named bot from authenticated Slack events, GitHub issues and
   comments, Telegram private chats (laptop long-poll, no public URL), WhatsApp
   Cloud API messages, normalized email webhooks, or a generic signed webhook.
@@ -87,16 +84,16 @@ machine with `kyn serve`, or on Fly.io for 24/7 hosting ([docs/deploy.md](docs/d
 ## Quick start
 
 ```bash
-cd /Users/arin.mallanna/personal/kyn
+cd /Users/arin.mallanna/personal/kiro-bot
 uv sync --extra server --extra dev
-uv run kyn bot create builder --cwd /Users/arin.mallanna/personal
-uv run kyn chat builder
+uv run ari bot create builder --cwd /Users/arin.mallanna/personal --engine opencode
+uv run ari chat builder
 ```
 
 For a one-shot task:
 
 ```bash
-uv run kyn ask builder "Inspect this repository and summarize it."
+uv run ari ask builder "Inspect this repository and summarize it."
 ```
 
 For the browser control room:
@@ -104,13 +101,15 @@ For the browser control room:
 ```bash
 npm --prefix web-ui install
 npm --prefix web-ui run build
-uv run kyn serve
+uv run ari serve
 ```
 
-Then open `http://127.0.0.1:8765/`. The server binds to loopback by default;
-do not expose it to a network until authentication and origin controls are
-enabled. The repository includes a dependency-free fallback control room under
-`web/`; building `web-ui/` adds the full React landing, engineering, and console
+Then open `http://127.0.0.1:8765/`. The service binds to loopback by default.
+Before remote access, configure `KYN_ACCESS_TOKEN`, allowed origins, and a
+private or authenticated network path. To build the macOS app and DMG, see
+[docs/desktop-app.md](docs/desktop-app.md).
+The repository includes a dependency-free fallback control room under
+`web/`; building `web-ui/` adds the full React landing, product guide, and console
 experience under `web/dist/`.
 
 ### Product demo video (Remotion)
@@ -125,23 +124,24 @@ npm --prefix web-ui run video          # Remotion Studio preview
 npm --prefix web-ui run video:render   # writes web-ui/out/kyn-demo.mp4
 ```
 
-The **Coding** panel starts and monitors verified patch executions. Select the
-builder bot, choose a separate reviewer, describe the task, and provide direct
-argument-vector checks such as `tests: python, -m, pytest, -q`. A ready result
-still requires a human handoff approval.
+The **Tasks** panel starts and monitors reviewable coding tasks. Select a builder
+and a different reviewer, describe the task, choose a base branch, and provide
+direct argument-vector checks such as `tests: python, -m, pytest, -q`. Inspect
+changed files, checks, reviewer findings, and the diff. Approve the handoff
+before merging the reviewed task into its local base branch.
 
 The **Workflow playground** is a dedicated control-room surface for composing
 and reviewing a team. It keeps every saved workflow in a left rail, renders
 its graph on a full canvas, shows recorded per-bot output in the bottom event
 panel, and validates bad arrows before a plan is sent. Pinch (or ⌘/Ctrl +
 wheel) zooms the canvas; node ports create explicit dependencies. Bots can
-also invoke the reserved `kiro-control` MCP to create that graph directly from
+also invoke the reserved control MCP to create that graph directly from
 a conversation; the host still asks before executing the control tool.
 
 The **Channels** panel connects a selected bot to another place without storing
 secret values. Configure the signing secret or reply token in the daemon's
 environment, enter only the environment-variable names in the UI, and copy the
-generated webhook URL. Telegram is the exception: the laptop polls Telegram, so
+generated webhook URL. Telegram is the exception: the Ari service polls Telegram, so
 you do not need a public webhook. See [docs/channels.md](docs/channels.md) for
 provider setup and payload contracts.
 
@@ -157,18 +157,22 @@ Run the complete test suite with:
 uv run pytest -q
 ```
 
-Data is stored under `~/.kyn/` by default. Override it with
-`KYN_HOME=/some/path`.
+New installs store data under `~/.ari/`. Ari reuses an existing `~/.kyn/`
+folder automatically and keeps accepting `KYN_HOME`; set `ARI_HOME=/some/path`
+to choose a different data folder.
 
 ## Always-on hosting
 
 | Surface | URL |
 | --- | --- |
-| Marketing (Vercel) | [kyn-blush.vercel.app](https://kyn-blush.vercel.app) |
-| Full daemon (Fly.io) | deploy with `./scripts/deploy-fly.sh` → `https://<app>.fly.dev` |
+| Marketing (Vercel, current deployment URL) | [kyn-blush.vercel.app](https://kyn-blush.vercel.app) |
+| Ari service (Fly.io) | deploy with `./scripts/deploy-fly.sh` → `https://<app>.fly.dev` |
 
-Run the full daemon 24/7 on Fly.io (`Dockerfile`, `fly.toml`). Vercel hosts the
-marketing SPA; point it at a remote daemon with `VITE_KYN_API_URL`.
+Run the Ari service on Fly.io (`Dockerfile`, `fly.toml`). The container does
+not include agent engines; install and sign in to each engine you plan to run.
+Vercel hosts the marketing SPA; point it at a remote daemon with `VITE_KYN_API_URL`. The
+existing hosting project and API variables retain their KYN names for deployment
+compatibility; the product UI and downloadable app are branded Ari.
 
 ```bash
 chmod +x scripts/deploy-fly.sh
@@ -180,40 +184,35 @@ Details: [docs/deploy.md](docs/deploy.md).
 ## Architecture
 
 ```text
-CLI / browser / routines / team plans
+CLI / browser / routines / team plans / channel events
               |
  Scheduler + Delegator + Engine
      /               \
 per-bot FIFO      WebSocket subscribers
 workers                 |
      \                   /
-        BotOrchestrator
-        /             \
- SQLite state       ACP runtime
- bots, turns       kiro-cli acp
- routines, policy      |
- durable runs/DAGs ephemeral MCP config
- plugins, audit        |
- shared memory         |
- workspaces/artifacts  |
- events, resume        |
-                 Kiro sessions
-                 tools + models
+       Bot workers + provider adapters
+          /          |          \
+       Kiro      OpenCode      Codex
+           \        |        /
+             ACP engines
+                 |
+    SQLite state / MCP config / Git worktrees
 ```
 
-See [docs/architecture.md](docs/architecture.md) for the protocol trace,
-security boundaries, and remaining roadmap.
+See [docs/architecture.md](docs/architecture.md) for the engine boundary,
+handoff flow, safety rules, and current product gaps.
 
 ## Live verification
 
-The normal suite is fully fake-backed and does not need a Kiro login. To prove
-the complete schedule-to-model path against your signed-in local Kiro CLI, run:
+The normal suite is fully fake-backed and does not need an engine login. To
+prove the schedule-to-model path against a signed-in local Kiro CLI, run:
 
 ```bash
 uv run python scripts/live_scheduler_smoke.py
 ```
 
-This creates an isolated temporary KYN database, fires one due routine,
+This creates an isolated temporary Ari database, fires one due routine,
 waits for the real ACP turn, verifies its answer and audit records, and removes
 the temporary database when finished.
 
@@ -223,8 +222,8 @@ To exercise the complete coding lifecycle against your signed-in Kiro CLI:
 uv run python scripts/live_coding_smoke.py
 ```
 
-The smoke test creates a temporary Git repository, lets Kiro edit only its
-detached worktree, runs a deterministic check, sends the result to a different
+The smoke test creates a temporary Git repository, lets a builder edit only its
+isolated worktree, runs a deterministic check, sends the result to a different
 reviewer bot, verifies the original checkout stayed unchanged, and approves
 the final human handoff.
 
@@ -234,7 +233,5 @@ controller against the same `KYN_HOME`.
 
 ## Independence
 
-This is a from-scratch implementation around Kiro's ACP interface. KiroCrew and
-the unofficial reconstructed Grok Bot repository were used only to understand
-publicly observable architectural patterns and failure modes. No source files
-from either project are included here.
+Ari uses the ACP-compatible interfaces provided by Kiro, OpenCode, and Codex.
+It is an independent product, not an official distribution of those engines.

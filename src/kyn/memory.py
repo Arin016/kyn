@@ -449,6 +449,91 @@ class SharedMemoryStore:
             )
         return imported
 
+    def backfill_coding_history(
+        self, *, execution_id: str | None = None, limit: int = 500
+    ) -> int:
+        """Persist compact local summaries of completed coding executions.
+
+        Coding runs use isolated ACP sessions, so their transcript is not part
+        of the bot's normal chat thread. This ledger is the continuity bridge
+        back to that bot without exposing worktree prompts to remote channels.
+        """
+        bounded_limit = min(max(int(limit), 1), 1_000)
+        with self.store.connect() as db:
+            table = db.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='coding_executions'"
+            ).fetchone()
+            if table is None:
+                return 0
+            if execution_id:
+                rows = db.execute(
+                    "SELECT id,spec_json,status,result_json,error,updated_at "
+                    "FROM coding_executions WHERE id=? AND finished_at != ''",
+                    (execution_id,),
+                ).fetchall()
+            else:
+                rows = db.execute(
+                    "SELECT id,spec_json,status,result_json,error,updated_at "
+                    "FROM coding_executions WHERE finished_at != '' "
+                    "ORDER BY updated_at DESC,id DESC LIMIT ?",
+                    (bounded_limit,),
+                ).fetchall()
+
+        recorded = 0
+        for row in rows:
+            try:
+                spec = json.loads(row["spec_json"] or "{}")
+                result = json.loads(row["result_json"] or "{}")
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(spec, dict) or not isinstance(result, dict):
+                continue
+            execution = str(row["id"])
+            task = _clip_memory_text(str(spec.get("task") or "Coding task"), 1_600)
+            status = str(row["status"] or "finished")
+            review = result.get("review")
+            build = result.get("build")
+            review_bot = str(spec.get("reviewer_bot") or "").strip()
+            build_bot = str(spec.get("builder_bot") or "").strip()
+            timestamp = str(row["updated_at"] or _now())
+
+            if review_bot and self.store.get_bot(review_bot) is not None and isinstance(review, dict):
+                request = (
+                    f"Completed coding-task review for: {task}\n"
+                    "Ari requested machine-readable JSON with approved, summary, "
+                    "findings, and blocking_findings so the review gate could parse it."
+                )
+                response = json.dumps(review, ensure_ascii=False, separators=(",", ":"))
+                self.record(
+                    review_bot,
+                    "coding",
+                    "coding-review",
+                    _clip_memory_text(request, 1_500),
+                    _clip_memory_text(response, 1_800),
+                    event_id=f"coding:{execution}:review",
+                    metadata={"coding_execution_id": execution, "role": "reviewer"},
+                    created_at=timestamp,
+                )
+                recorded += 1
+
+            if build_bot and self.store.get_bot(build_bot) is not None and isinstance(build, dict):
+                request = f"Completed coding-task implementation: {task}"
+                response = str(build.get("summary") or result.get("summary") or status)
+                if row["error"]:
+                    response = f"{response}\nStatus: {status}. Error: {row['error']}"
+                self.record(
+                    build_bot,
+                    "coding",
+                    "coding-builder",
+                    _clip_memory_text(request, 1_500),
+                    _clip_memory_text(response, 1_800),
+                    event_id=f"coding:{execution}:build",
+                    metadata={"coding_execution_id": execution, "role": "builder"},
+                    created_at=timestamp,
+                )
+                recorded += 1
+        return recorded
+
     def retrieve(
         self,
         bot_name: str,
@@ -689,6 +774,11 @@ def _json_safe(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return [_json_safe(item) for item in value]
     return str(value)
+
+
+def _clip_memory_text(value: str, limit: int) -> str:
+    text = str(value or "").strip()
+    return text if len(text) <= limit else f"{text[:limit]}…[truncated]"
 
 
 def _now() -> str:

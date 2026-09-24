@@ -19,7 +19,7 @@ def test_handoff_compiles_grounded_redacted_bundle(tmp_path: Path) -> None:
     repo.mkdir()
     _git(repo, "init", "-q")
     _git(repo, "config", "user.email", "test@example.invalid")
-    _git(repo, "config", "user.name", "KYN Test")
+    _git(repo, "config", "user.name", "Ari Test")
     (repo / "app.py").write_text("value = 1\n")
     _git(repo, "add", "app.py")
     _git(repo, "commit", "-q", "-m", "initial")
@@ -47,7 +47,7 @@ def test_handoff_rejects_unknown_engine_and_captures_staged_files(tmp_path: Path
     repo.mkdir()
     _git(repo, "init", "-q")
     _git(repo, "config", "user.email", "test@example.invalid")
-    _git(repo, "config", "user.name", "KYN Test")
+    _git(repo, "config", "user.name", "Ari Test")
     (repo / "staged.txt").write_text("staged value\n")
     _git(repo, "add", "staged.txt")
 

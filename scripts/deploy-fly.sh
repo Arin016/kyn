@@ -13,7 +13,7 @@ APP_NAME="${FLY_APP_NAME:-kyn}"
 REGION="${FLY_REGION:-iad}"
 VOLUME_NAME="${FLY_VOLUME_NAME:-kyn_data}"
 
-echo "Deploying KYN to Fly app: ${APP_NAME}"
+echo "Deploying Ari to Fly app: ${APP_NAME}"
 
 if ! fly apps list 2>/dev/null | grep -q "^${APP_NAME}[[:space:]]"; then
   echo "Creating Fly app ${APP_NAME}..."

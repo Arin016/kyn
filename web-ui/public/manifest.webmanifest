@@ -1,0 +1,13 @@
+{
+  "name": "Ari — Local Agent Workspace",
+  "short_name": "Ari",
+  "description": "A private control room for coding agents running on your Mac.",
+  "start_url": "./?mobile=1",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f5f6",
+  "theme_color": "#1b1c1e",
+  "icons": [
+    { "src": "./brand-mark.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

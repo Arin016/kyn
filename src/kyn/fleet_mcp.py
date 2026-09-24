@@ -1,6 +1,6 @@
 """Fleet-control MCP: admin-grade tools for a chief-of-staff bot.
 
-Every named KYN already carries the coordination MCP (:mod:`kyn.control_mcp`)
+Every named Ari already carries the coordination MCP (:mod:`kyn.control_mcp`)
 with ``call_bot`` and team plans. The fleet plugin adds the other half of the
 control plane: creating bots, reconfiguring them (model, effort, agent,
 working directory), reading and writing their governance policies, managing
@@ -38,7 +38,7 @@ TOOLS = [
     {
         "name": "fleet_status",
         "description": (
-            "One snapshot of the whole KYN fleet: every bot with its engine, model, "
+            "One snapshot of the whole Ari fleet: every bot with its engine, model, "
             "working directory, plus active runs and pending approval requests. "
             "Start here before any fleet change."
         ),

@@ -1,11 +1,16 @@
 import { useMemo, useState } from "react";
-import type { MemoryRecord } from "../../types";
+import type { MemoryFact, MemoryRecord } from "../../types";
 import { fullTime, truncate } from "../../lib/format";
 import { EmptyState, Badge } from "../ui/Basics";
 import { SegmentedControl } from "../ui/Pickers";
+import api from "../../api";
 
 interface Props {
+  botName: string;
   records: MemoryRecord[];
+  facts: MemoryFact[];
+  onFactsChanged: () => void;
+  showToast: (message: string, isError?: boolean) => void;
 }
 
 function scopeLabel(scope?: string): string {
@@ -14,10 +19,15 @@ function scopeLabel(scope?: string): string {
   return scope;
 }
 
-export function MemoryTab({ records }: Props) {
+export function MemoryTab({ botName, records, facts, onFactsChanged, showToast }: Props) {
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState("all");
   const [open, setOpen] = useState<number[]>([]);
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState("");
+  const [dreaming, setDreaming] = useState(false);
+  const [showInvalid, setShowInvalid] = useState(false);
+  const [invalidFacts, setInvalidFacts] = useState<MemoryFact[]>([]);
 
   const scopes = useMemo(() => {
     const found = new Set(records.map((record) => scopeLabel(record.scope)));
@@ -37,8 +47,136 @@ export function MemoryTab({ records }: Props) {
       .slice(0, 40);
   }, [records, scope, query]);
 
+  const toggleInvalid = async () => {
+    if (showInvalid) {
+      setShowInvalid(false);
+      return;
+    }
+    setBusy("invalid");
+    try {
+      const data = await api.memoryFacts(botName, true);
+      setInvalidFacts((data.facts || []).filter((fact) => fact.invalid_at));
+      setShowInvalid(true);
+    } catch (exc) {
+      showToast((exc as Error).message || "Could not load retired facts.", true);
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const visibleFacts = showInvalid
+    ? [...facts, ...invalidFacts.filter((item) => !facts.some((live) => live.id === item.id))]
+    : facts;
+
+  const runFactAction = async (kind: string, fn: () => Promise<unknown>, done: string) => {    setBusy(kind);
+    try {
+      await fn();
+      onFactsChanged();
+      if (done) showToast(done, false);
+    } catch (exc) {
+      showToast((exc as Error).message || "Memory update failed.", true);
+    } finally {
+      setBusy("");
+    }
+  };
+
   return (
     <>
+      <div className="panel-section">
+        <div className="panel-section-head">
+          <div>
+            <p className="section-label">Durable facts</p>
+            <p className="section-hint">
+              Distilled lessons the bot recalls first. Pinned facts always lead; retired ones stay inspectable.
+            </p>
+          </div>
+          {facts.length > 0 ? <Badge tone="muted">{facts.length} facts</Badge> : null}
+        </div>
+        <div className="place-secret-form">
+          <input
+            aria-label="New fact"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            placeholder="Teach this bot a lasting fact…"
+          />
+          <button
+            type="button"
+            className="mini-primary"
+            disabled={busy !== "" || !draft.trim()}
+            onClick={() => {
+              const text = draft.trim();
+              setDraft("");
+              void runFactAction("add", () => api.rememberFact(botName, text), "Fact recorded.");
+            }}
+          >
+            {busy === "add" ? "…" : "Remember"}
+          </button>
+          <button
+            type="button"
+            className="mini-ghost"
+            disabled={busy !== ""}
+            title="Schedule a nightly turn where the bot distills facts and forgets trivia on its own"
+            onClick={() => {
+              setDreaming(true);
+              void runFactAction("dream", () => api.enableDreaming(botName), "Nightly dreaming enabled — the bot will consolidate while you sleep.").finally(
+                () => setDreaming(false),
+              );
+            }}
+          >
+            {dreaming ? "…" : "Dream nightly"}
+          </button>
+          <button type="button" className="mini-ghost" onClick={() => void toggleInvalid()}>
+            {showInvalid ? "Hide retired" : "Show retired"}
+          </button>
+        </div>
+        {visibleFacts.length === 0 ? (
+          <EmptyState>No facts yet — the bot records them with memory_remember, or teach one above.</EmptyState>
+        ) : (
+          <ul className="task-files">
+            {visibleFacts.map((fact) => (
+              <li key={fact.id}>
+                <span>
+                  {fact.pinned && <Badge tone="accent">pinned</Badge>}{" "}
+                  {fact.invalid_at && <s>{fact.fact}</s>}
+                  {!fact.invalid_at && fact.fact}
+                  {fact.entities.length > 0 && (
+                    <span className="field-hint"> [{fact.entities.join(", ")}]</span>
+                  )}
+                </span>
+                <span className="task-file-actions">
+                  {!fact.invalid_at && (
+                    <button
+                      type="button"
+                      className="mini-ghost"
+                      disabled={busy !== ""}
+                      title={fact.pinned ? "Unpin" : "Pin — always recall first"}
+                      onClick={() =>
+                        void runFactAction(`pin:${fact.id}`, () => api.pinFact(botName, fact.id, !fact.pinned), "")
+                      }
+                    >
+                      {fact.pinned ? "Unpin" : "Pin"}
+                    </button>
+                  )}
+                  {!fact.invalid_at && (
+                    <button
+                      type="button"
+                      className="mini-ghost"
+                      disabled={busy !== ""}
+                      title="Retire this fact (history is kept, recall stops)"
+                      onClick={() =>
+                        void runFactAction(`forget:${fact.id}`, () => api.forgetFact(botName, fact.id), "")
+                      }
+                    >
+                      Forget
+                    </button>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
       <div className="panel-section">
         <div className="panel-section-head">
           <div>

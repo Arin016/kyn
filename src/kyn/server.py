@@ -1,4 +1,4 @@
-"""HTTP and WebSocket control plane for KYN.
+"""HTTP and WebSocket control plane for Ari.
 
 FastAPI is intentionally an optional dependency of the core package.  Importing
 this module remains safe without it; :func:`create_app` explains how to enable
@@ -64,6 +64,7 @@ from .tasks import worktree_diff, worktree_is_clean
 from .delegation_guard import GATED_TOOLS as DELEGATION_GATED_TOOLS
 from .delegation_guard import authorize as authorize_delegation_tool
 from .remote import authorize_websocket, install_remote_guard
+from .setup import install_engine, setup_status
 from .channels import (
     ChannelAuthenticationError,
     ChannelAuthorizationError,
@@ -404,8 +405,9 @@ def create_app(
     )
     active_coding_store = CodingExecutionStore(active_store)
     active_tasks = TaskStore(active_store)
+    active_memory.backfill_coding_history()
     active_coding_controller = coding_controller or CodingLifecycleController(
-        active_coding_store, active_engine, active_workspaces
+        active_coding_store, active_engine, active_workspaces, memory=active_memory
     )
     active_channels = channels or ChannelStore(active_store)
     active_groups = groups or GroupStore(active_store)
@@ -623,7 +625,7 @@ def create_app(
                             if engine_start_attempted:
                                 await _maybe_await(active_engine.close())
 
-    app = FastAPI(title="KYN", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Ari", version="0.1.0", lifespan=lifespan)
     install_remote_guard(app)
     # State is also populated immediately for ASGI hosts that inspect the app
     # before entering its lifespan.
@@ -653,7 +655,7 @@ def create_app(
     async def unexpected_error(_request: Request, exc: Exception) -> JSONResponse:
         # Prompts, local paths and provider details can occur in exceptions.
         # Preserve those only in server logs, never in the wire response.
-        _logger.exception("Unhandled KYN API error", exc_info=exc)
+        _logger.exception("Unhandled Ari API error", exc_info=exc)
         return JSONResponse(
             status_code=500,
             content={"error": "internal_error", "detail": "The request could not be completed"},
@@ -748,6 +750,21 @@ def create_app(
     @app.get("/api/health")
     async def health() -> dict[str, Any]:
         return {"status": "ok"}
+
+    @app.get("/api/setup/status")
+    async def get_setup_status() -> dict[str, Any]:
+        return await setup_status()
+
+    @app.post("/api/setup/install/{engine}")
+    async def setup_install_engine(engine: str, request: Request) -> dict[str, Any]:
+        origin = (request.headers.get("origin") or "").rstrip("/")
+        expected_origin = str(request.base_url).rstrip("/")
+        if not origin or origin != expected_origin:
+            raise HTTPException(status_code=403, detail="setup installs must come from this Ari app")
+        try:
+            return await install_engine(engine)
+        except (ValueError, RuntimeError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.get("/api/bots")
     async def list_bots() -> list[dict[str, Any]]:
@@ -1341,6 +1358,13 @@ def create_app(
             return payload
         return {"run": payload}
 
+    @app.get("/api/runs")
+    async def list_runs(limit: int = Query(default=100, ge=1, le=500)) -> list[dict[str, Any]]:
+        listing = getattr(active_engine, "list_runs", None)
+        if listing is None:
+            return []
+        return _json_safe(await _maybe_await(listing(limit=limit)))
+
     @app.post("/api/runs/{run_id}/permissions/{request_id}")
     async def decide_permission(run_id: str, request_id: str, body: PermissionBody) -> dict[str, Any]:
         await _require_run(active_engine, run_id)
@@ -1485,7 +1509,7 @@ def create_app(
     @app.delete("/api/plugins/{plugin_id}")
     async def delete_plugin(plugin_id: str) -> dict[str, Any]:
         if plugin_id == CONTROL_PLUGIN_ID:
-            raise HTTPException(status_code=409, detail="plugin is managed by KYN")
+            raise HTTPException(status_code=409, detail="plugin is managed by Ari")
         active_plugins.delete_plugin(plugin_id)
         return {"deleted": True, "id": plugin_id}
 
@@ -1502,7 +1526,7 @@ def create_app(
     async def bind_plugin(name: str, plugin_id: str, body: BindPluginBody) -> dict[str, Any]:
         _require_bot(active_store, name)
         if plugin_id == CONTROL_PLUGIN_ID:
-            raise HTTPException(status_code=409, detail="plugin is managed by KYN")
+            raise HTTPException(status_code=409, detail="plugin is managed by Ari")
         binding = active_plugins.bind_plugin(
             name,
             plugin_id,
@@ -1518,7 +1542,7 @@ def create_app(
     async def unbind_plugin(name: str, plugin_id: str) -> dict[str, Any]:
         _require_bot(active_store, name)
         if plugin_id == CONTROL_PLUGIN_ID:
-            raise HTTPException(status_code=409, detail="plugin is managed by KYN")
+            raise HTTPException(status_code=409, detail="plugin is managed by Ari")
         active_plugins.unbind_plugin(name, plugin_id)
         return {"deleted": True, "bot_name": name, "plugin_id": plugin_id}
 
@@ -1756,6 +1780,33 @@ def create_app(
 
     def _task_view(execution: dict[str, Any], task: dict[str, Any]) -> dict[str, Any]:
         spec = execution.get("spec") or {}
+        result = execution.get("result") or {}
+        records = result.get("records") or []
+        latest_checks: dict[str, dict[str, Any]] = {}
+        for record in records:
+            command = record.get("command") or {}
+            check_name = str(command.get("label") or "")
+            if not check_name:
+                continue
+            command_result = record.get("result") or {}
+            exit_code = command_result.get("exit_code")
+            latest_checks[check_name] = {
+                "status": (
+                    "timeout" if command_result.get("timed_out")
+                    else "passed" if exit_code == 0
+                    else "failed" if exit_code is not None
+                    else "unknown"
+                ),
+                "duration_seconds": command_result.get("duration_seconds"),
+            }
+        checks = [
+            {
+                "name": str(check.get("name") or "Check"),
+                **latest_checks.get(str(check.get("name") or ""), {"status": "pending"}),
+            }
+            for check in spec.get("checks") or []
+        ]
+        review = result.get("review") or {}
         repo = str(task.get("repo_path") or "")
         branch = str(task.get("branch") or "")
         state = derive_task_state(repo, branch, str(execution.get("id") or ""))
@@ -1774,6 +1825,13 @@ def create_app(
             "created_at": task.get("created_at"),
             "updated_at": execution.get("updated_at"),
             "finished_at": execution.get("finished_at"),
+            "checks": checks,
+            "review": {
+                "approved": review.get("approved"),
+                "summary": review.get("summary"),
+                "findings": review.get("findings") or [],
+                "blocking_findings": review.get("blocking_findings") or [],
+            } if review else None,
         }
 
     async def _require_task(execution_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -2238,7 +2296,7 @@ def create_app(
         except WebSocketDisconnect:
             return
         except Exception as exc:
-            _logger.exception("KYN WebSocket stream failed", exc_info=exc)
+            _logger.exception("Ari WebSocket stream failed", exc_info=exc)
             try:
                 await websocket.send_json(
                     {

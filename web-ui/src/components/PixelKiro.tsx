@@ -38,7 +38,7 @@ function sampleTargets(width: number, height: number, mode: number) {
     ctx.font = `800 ${size}px "Space Grotesk", Inter, sans-serif`;
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
-    ctx.fillText("KYN", width * 0.99, height * 0.48);
+    ctx.fillText("Ari", width * 0.99, height * 0.48);
   } else drawGhost(ctx, width, height);
   const pixels = ctx.getImageData(0, 0, mask.width, mask.height).data;
   const step = Math.max(7, Math.round(Math.min(width, height) / 92));

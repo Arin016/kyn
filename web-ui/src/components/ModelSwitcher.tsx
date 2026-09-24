@@ -31,21 +31,27 @@ export function ModelSwitcher({ bot, onSwitch, disabled = false, variant = "pill
   useEffect(() => {
     if (!open || !bot || disabled) return;
     setError("");
-    if (engine === "kiro") {
-      setModels(KIRO_MODELS.filter((model) => model.id !== "__custom"));
-      setLoading(false);
-      return;
-    }
-    if (engine === "codex") {
-      setModels([]);
-      setLoading(false);
-      return;
-    }
+    // Every engine now serves its list from the backend (`/api/engines/{engine}/models`):
+    // OpenCode reads its live registry, Kiro serves a curated catalogue, Codex serves
+    // suggestions. Keep the bundled Kiro list as an offline fallback only.
     setLoading(true);
     api
       .engines(engine)
-      .then((data) => setModels(data.models || []))
-      .catch((exc: Error) => setError(exc.message || "Could not load models"))
+      .then((data) => {
+        const list = data.models || [];
+        if (engine === "kiro" && list.length === 0) {
+          setModels(KIRO_MODELS.filter((model) => model.id !== "__custom"));
+        } else {
+          setModels(list);
+        }
+      })
+      .catch((exc: Error) => {
+        if (engine === "kiro") {
+          setModels(KIRO_MODELS.filter((model) => model.id !== "__custom"));
+        } else {
+          setError(exc.message || "Could not load models");
+        }
+      })
       .finally(() => setLoading(false));
   }, [open, bot, engine, disabled]);
 
@@ -109,6 +115,23 @@ export function ModelSwitcher({ bot, onSwitch, disabled = false, variant = "pill
             <p className="model-menu__note">No models reported by this engine.</p>
           )}
           <ul className="model-menu__list">
+            {currentId !== "" && (
+              <li key="__default">
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={false}
+                  className="model-option"
+                  onClick={() => void choose("")}
+                >
+                  <span className="model-option__text">
+                    <strong>Default model</strong>
+                    <small>engine default</small>
+                  </span>
+                  {pending === "" ? <span className="model-option__mark">…</span> : null}
+                </button>
+              </li>
+            )}
             {models.map((model) => {
               const active = model.id === currentId;
               return (

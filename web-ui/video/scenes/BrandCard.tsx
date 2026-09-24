@@ -1,6 +1,6 @@
 import React from "react";
 import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
-import { KiroGlyph } from "../../src/components/KiroGlyph";
+import { AriGlyph } from "../../src/components/AriGlyph";
 
 interface Props {
   mode: "intro" | "outro";
@@ -44,7 +44,7 @@ export const BrandCard: React.FC<Props> = ({ mode }) => {
         }}
       >
         <div style={{ transform: `scale(${glyphScale})` }}>
-          <KiroGlyph size={96} title="KYN" />
+          <AriGlyph size={96} title="Ari" />
         </div>
         <div style={{ textAlign: "center" }}>
           <h1
@@ -57,7 +57,7 @@ export const BrandCard: React.FC<Props> = ({ mode }) => {
               color: "#FFFFFF",
             }}
           >
-            KYN
+            Ari
           </h1>
           <p
             style={{
@@ -71,8 +71,8 @@ export const BrandCard: React.FC<Props> = ({ mode }) => {
             }}
           >
             {mode === "intro"
-              ? "Beyond the terminal."
-              : "Persistent agents. Phone continuity. Approvals you can trust."}
+              ? "Your agents. One steady crew."
+              : "One workspace for Kiro, OpenCode, and Codex."}
           </p>
         </div>
         {mode === "outro" ? (
@@ -82,14 +82,14 @@ export const BrandCard: React.FC<Props> = ({ mode }) => {
               opacity: spring({ frame: Math.max(0, frame - 18), fps, config: { damping: 18 } }),
               padding: "10px 18px",
               borderRadius: 999,
-              border: "1px solid rgba(176,139,255,0.4)",
-              color: "#B08BFF",
+              border: "1px solid rgba(225,228,232,0.24)",
+              color: "#D4D4D8",
               fontFamily: "Inter, sans-serif",
               fontSize: 15,
               fontWeight: 600,
             }}
           >
-            Local control plane · open the studio to iterate
+            One workspace · three engines · work you can review
           </div>
         ) : null}
       </div>

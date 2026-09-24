@@ -1,4 +1,4 @@
-"""Durable, isolated coding executions composed from KYN primitives.
+"""Durable, isolated coding executions composed from Ari primitives.
 
 The lifecycle deliberately stops at a human handoff.  Agents may build,
 repair, and review inside one detached worktree, while the harness owns the
@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import os
 import re
 import signal
@@ -21,6 +22,8 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal, Mapping, Sequence
+
+from .memory import SharedMemoryStore
 
 from .coding_workflow import (
     BuildRequest,
@@ -41,6 +44,9 @@ from .coding_workflow import (
     WorkflowBudget,
     WorkspaceRef,
 )
+
+
+_LOGGER = logging.getLogger(__name__)
 from .store import Store
 from .workspaces import (
     WorkspaceExecutionSpec,
@@ -391,10 +397,12 @@ class CodingLifecycleController:
         store: CodingExecutionStore,
         engine: Any,
         workspaces: WorkspaceManager,
+        memory: SharedMemoryStore | None = None,
     ) -> None:
         self.store = store
         self.engine = engine
         self.workspaces = workspaces
+        self.memory = memory
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._tokens: dict[str, CancellationToken] = {}
         self._closing = False
@@ -537,6 +545,7 @@ class CodingLifecycleController:
                     "awaiting_handoff",
                     result=snapshot,
                 )
+                await self._persist_memory(execution_id)
             else:
                 outcome = "cancelled" if result.status.value == "cancelled" else "failed"
                 await self._finalize_if_active(lease, outcome)
@@ -547,6 +556,7 @@ class CodingLifecycleController:
                     result=snapshot,
                     error=result.error,
                 )
+                await self._persist_memory(execution_id)
         except BaseException as exc:
             if isinstance(exc, asyncio.CancelledError):
                 raise
@@ -557,6 +567,19 @@ class CodingLifecycleController:
                 execution_id,
                 "failed",
                 error=f"{type(exc).__name__}: {exc}"[:1000],
+            )
+            await self._persist_memory(execution_id)
+
+    async def _persist_memory(self, execution_id: str) -> None:
+        if self.memory is None:
+            return
+        try:
+            await asyncio.to_thread(
+                self.memory.backfill_coding_history, execution_id=execution_id
+            )
+        except Exception:
+            _LOGGER.exception(
+                "Could not persist coding history for execution %s", execution_id
             )
 
     def _callbacks(

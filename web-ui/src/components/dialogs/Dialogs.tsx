@@ -173,7 +173,7 @@ export function CreateBotDialog({ open, onClose, onDone }: DialogProps) {
         <label>
           Name
           <span className="bot-identity">
-            <BotAvatar name={name || "kyn"} size={44} className="bot-identity__avatar" />
+            <BotAvatar name={name || "ari"} size={44} className="bot-identity__avatar" />
             <input
               name="name"
               autoComplete="off"
@@ -660,6 +660,202 @@ interface CheckRow {
   timeout: number;
 }
 
+export function TaskDialog({ open, onClose, bot, bots = [], onDone }: DialogProps) {
+  const [error, setError] = useState("");
+  const [builder, setBuilder] = useState("");
+  const [reviewerBot, setReviewerBot] = useState("");
+  const [repoPath, setRepoPath] = useState("");
+  const [base, setBase] = useState("HEAD");
+  const [task, setTask] = useState("");
+  const [checks, setChecks] = useState<CheckRow[]>([{ name: "tests", argv: ["pytest", "-q"], timeout: 600 }]);
+  const [maxRepairs, setMaxRepairs] = useState(1);
+  const [starting, setStarting] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const fallback = bots[0]?.name || "";
+    setBuilder((current) => current || bot?.name || fallback);
+    setRepoPath((current) => current || bot?.cwd || "");
+    setBase("HEAD");
+  }, [open, bot, bots]);
+
+  useEffect(() => {
+    if (!open) return;
+    const options = bots.filter((item) => item.name !== builder);
+    setReviewerBot((current) => (options.some((item) => item.name === current) ? current : options[0]?.name || ""));
+  }, [open, bots, builder]);
+
+  const reviewers = bots.filter((item) => item.name !== builder);
+  const builders = bots;
+  const updateCheck = (index: number, patch: Partial<CheckRow>) =>
+    setChecks((current) => current.map((row, position) => (position === index ? { ...row, ...patch } : row)));
+
+  return (
+    <Modal eyebrow="Tasks" title="Start a reviewable task" open={open} onClose={onClose}>
+      <form
+        className="modal-form"
+        onSubmit={async (event) => {
+          event.preventDefault();
+          setError("");
+          try {
+            if (!builder) throw new Error("Choose a builder bot.");
+            if (!reviewerBot) throw new Error("Choose a reviewer bot — it must be a different bot.");
+            if (builder === reviewerBot) throw new Error("Builder and reviewer must be different bots.");
+            const payload = checks.map((row, index) => {
+              if (!row.name.trim()) throw new Error(`Check ${index + 1} needs a name.`);
+              if (row.argv.length === 0) throw new Error(`Check ${index + 1} needs an executable.`);
+              return { name: row.name.trim(), argv: row.argv, timeout_seconds: row.timeout };
+            });
+            if (payload.length === 0) throw new Error("Add at least one deterministic check.");
+            setStarting(true);
+            await api.createTask({
+              builder_bot: builder,
+              reviewer_bot: reviewerBot,
+              repo_path: repoPath,
+              base: base.trim() || "HEAD",
+              task,
+              checks: payload,
+              max_repairs: maxRepairs,
+            });
+            setTask("");
+            setRepoPath("");
+            setBase("HEAD");
+            setChecks([{ name: "tests", argv: ["pytest", "-q"], timeout: 600 }]);
+            setMaxRepairs(1);
+            onClose();
+            onDone();
+          } catch (exc) {
+            setError((exc as Error).message || "Could not start task");
+          } finally {
+            setStarting(false);
+          }
+        }}
+      >
+        <p className="dialog-copy">Builds on an isolated <code>kyn/task-…</code> branch. Review the diff here, then merge or abandon — the base branch is never touched without your merge.</p>
+        <FieldGroup label="Builder bot" hint="Does the work in an isolated worktree.">
+          <TilePicker
+            value={builder}
+            options={builders.map((item) => ({ value: item.name, label: item.name, hint: item.engine || "kiro" }))}
+            onChange={setBuilder}
+            label="Builder bot"
+            columns={2}
+          />
+        </FieldGroup>
+        <FieldGroup label="Reviewer bot" hint="Independent review must come from a different bot.">
+          {reviewers.length === 0 ? (
+            <p className="activity-empty">Create a second bot to review the work.</p>
+          ) : (
+            <TilePicker
+              value={reviewerBot}
+              options={reviewers.map((item) => ({ value: item.name, label: item.name, hint: item.engine || "kiro" }))}
+              onChange={setReviewerBot}
+              label="Reviewer bot"
+              columns={2}
+            />
+          )}
+        </FieldGroup>
+        <label>
+          Repository
+          <input
+            name="repo_path"
+            required
+            value={repoPath}
+            onChange={(event) => setRepoPath(event.target.value)}
+            placeholder="/Users/you/project"
+          />
+          <span className="field-hint">Must be a git checkout. Your working copy is left alone.</span>
+        </label>
+        <label>
+          Base branch
+          <input
+            name="base"
+            value={base}
+            onChange={(event) => setBase(event.target.value)}
+            placeholder="HEAD (= current branch)"
+          />
+          <span className="field-hint">Branch the task starts from and merges back into. HEAD means the checked-out branch.</span>
+        </label>
+        <label>
+          Task
+          <textarea
+            name="task"
+            required
+            rows={5}
+            value={task}
+            onChange={(event) => setTask(event.target.value)}
+            placeholder="Fix the issue, add tests, and explain the risk."
+          />
+        </label>
+        <FieldGroup label="Checks" hint="Commands run directly, without a shell. Enter after each argument.">
+          {checks.map((row, index) => (
+            <div className="check-row" key={index}>
+              <div className="check-row-head">
+                <input
+                  className="check-name"
+                  value={row.name}
+                  placeholder="tests"
+                  aria-label={`Check ${index + 1} name`}
+                  onChange={(event) => updateCheck(index, { name: event.target.value })}
+                />
+                <NumberStepper
+                  label="Timeout s"
+                  value={row.timeout}
+                  min={5}
+                  max={3600}
+                  step={30}
+                  onChange={(value) => updateCheck(index, { timeout: value })}
+                  hint="Seconds before the check is killed"
+                />
+                <button
+                  type="button"
+                  className="kv-remove"
+                  aria-label={`Remove check ${index + 1}`}
+                  onClick={() => setChecks((current) => current.filter((_, position) => position !== index))}
+                >
+                  ×
+                </button>
+              </div>
+              <TagInput
+                label="Command"
+                value={row.argv}
+                onChange={(argv) => updateCheck(index, { argv })}
+                mono
+                placeholder={row.name === "tests" ? "pytest" : "npm"}
+              />
+            </div>
+          ))}
+          <button
+            type="button"
+            className="kv-add"
+            onClick={() => setChecks((current) => [...current, { name: "", argv: [], timeout: 600 }])}
+          >
+            Add check
+          </button>
+        </FieldGroup>
+        <NumberStepper
+          label="Maximum repairs"
+          value={maxRepairs}
+          min={0}
+          max={3}
+          onChange={setMaxRepairs}
+          hint="How many times the builder may fix a failing check"
+        />
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+        <div className="dialog-actions">
+          <button type="button" className="btn btn-sm btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="btn btn-sm btn-primary" disabled={starting}>
+            {starting ? "Starting…" : "Start task"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 export function CodingDialog({ open, onClose, bot, bots = [], onDone }: DialogProps) {
   const [error, setError] = useState("");
   const [repoPath, setRepoPath] = useState("");
@@ -828,34 +1024,67 @@ export function CodingDialog({ open, onClose, bot, bots = [], onDone }: DialogPr
   );
 }
 
-export function HandoffDialog({ open, onClose, bot }: DialogProps) {
-  const [target, setTarget] = useState("opencode");
+interface HandoffDialogProps extends DialogProps {
+  onContinue: (botName: string, prompt: string) => Promise<void>;
+}
+
+export function HandoffDialog({ open, onClose, bot, bots = [], onContinue }: HandoffDialogProps) {
+  const [target, setTarget] = useState("all");
+  const [targetBot, setTargetBot] = useState("");
   const [prompt, setPrompt] = useState("");
   const [warnings, setWarnings] = useState<string[]>([]);
   const [tokens, setTokens] = useState(0);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [continuing, setContinuing] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const destinations = bots.filter(
+    (candidate) => candidate.name !== bot?.name && (target === "all" || (candidate.engine || "kiro") === target),
+  );
 
   useEffect(() => {
     if (open && bot) {
-      const fallback = ["kiro", "opencode", "codex"].find((engine) => engine !== (bot.engine || "kiro")) || "opencode";
-      setTarget(fallback);
+      const otherBot = bots.find((candidate) => candidate.name !== bot.name);
+      setTarget("all");
+      setTargetBot(otherBot?.name || "");
       setPrompt("");
       setWarnings([]);
       setTokens(0);
       setError("");
     }
-  }, [open, bot]);
+    // Reset only when opening; later roster refreshes should not erase a draft.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, bot?.name]);
+
+  useEffect(() => {
+    if (!destinations.some((candidate) => candidate.name === targetBot)) {
+      setTargetBot(destinations[0]?.name || "");
+    }
+  }, [target, bots, bot?.name]);
+
+  const changeTarget = (engine: string) => {
+    setTarget(engine);
+    setPrompt("");
+    setWarnings([]);
+    setTokens(0);
+    setCopied(false);
+    setError("");
+  };
+
+  const selectedBot = destinations.find((candidate) => candidate.name === targetBot);
+  const engineToUse = target === "all" ? selectedBot?.engine || "kiro" : target;
 
   const compile = async () => {
     if (!bot) return;
     setLoading(true);
     setError("");
     try {
-      const bundle = await api.handoff(bot.name, target);
+      const bundle = await api.handoff(bot.name, engineToUse);
       setPrompt(String(bundle.prompt || ""));
       setWarnings(Array.isArray(bundle.warnings) ? bundle.warnings.map(String) : []);
       setTokens(Number(bundle.total_estimated_tokens || 0));
+      setCopied(false);
     } catch (exc) {
       setError((exc as Error).message || "Could not compile handoff");
     } finally {
@@ -864,40 +1093,109 @@ export function HandoffDialog({ open, onClose, bot }: DialogProps) {
   };
 
   return (
-    <Modal eyebrow="Portable context" title="Hand off this thread" open={open} onClose={onClose} wide>
-      <p className="dialog-copy">
-        Compile the bot&apos;s durable turns and current workspace into a bounded bundle for another engine.
-        The next worker must still verify assumptions against the repository.
-      </p>
-      <FieldGroup label="Next engine">
-        <TilePicker
-          value={target}
-          options={[
-            { value: "kiro", label: "Kiro", hint: "Native ACP session" },
-            { value: "opencode", label: "OpenCode", hint: "Separate agent runtime" },
-            { value: "codex", label: "Codex", hint: "Needs codex-acp installed" },
-          ]}
-          onChange={setTarget}
-          label="Next engine"
-        />
-      </FieldGroup>
-      {warnings.length > 0 && (
-        <p className="dialog-copy">{warnings.join(" ")}</p>
-      )}
-      {prompt && (
-        <pre className="handoff-preview">{prompt}</pre>
-      )}
-      <p className="form-error" role="alert">
-        {error}
-      </p>
-      <div className="dialog-actions">
-        <span className="field-hint">{tokens > 0 ? `~${tokens} tokens` : ""}</span>
-        <button type="button" className="btn btn-sm btn-secondary" onClick={onClose}>
-          Close
-        </button>
-        <button type="button" className="btn btn-sm btn-primary" disabled={loading || !bot} onClick={() => void compile()}>
-          {loading ? "Compiling…" : "Compile handoff"}
-        </button>
+    <Modal eyebrow="Conversation handoff" title="Choose where to continue" open={open} onClose={onClose}>
+      <div className="handoff-content">
+        <p className="dialog-copy">
+          Package {bot?.name || "this bot"}&apos;s recent work and workspace, then continue it with another bot.
+        </p>
+        <FieldGroup label="1 · Choose an engine" hint="All engines shows every bot. A bot runs handoffs on its configured engine.">
+          <SegmentedControl
+            value={target}
+            options={[
+              { value: "all", label: "All engines" },
+              ...ENGINES.map(({ id, label }) => ({ value: id, label })),
+            ]}
+            onChange={changeTarget}
+            label="Filter bots by engine"
+            size="sm"
+            disabled={loading || continuing}
+          />
+        </FieldGroup>
+        <FieldGroup label="2 · Choose a destination bot" hint="Every other bot is available; its engine is shown on the card.">
+          {destinations.length > 0 ? (
+            <TilePicker
+              value={targetBot}
+              options={destinations.map((candidate) => ({
+                value: candidate.name,
+                label: candidate.name,
+                hint: `${ENGINES.find((engine) => engine.id === (candidate.engine || "kiro"))?.label || candidate.engine || "Kiro"}${candidate.model ? ` · ${candidate.model}` : candidate.agent ? ` · ${candidate.agent}` : " · Ready to continue"}`,
+                disabled: loading || continuing,
+              }))}
+              onChange={(name) => {
+                setTargetBot(name);
+                setPrompt("");
+                setWarnings([]);
+                setTokens(0);
+                setCopied(false);
+                setError("");
+              }}
+              label="Destination bot"
+              columns={2}
+            />
+          ) : (
+            <p className="handoff-empty">
+              {target === "all"
+                ? "There are no other bots yet. Create another bot to continue this thread in Ari."
+                : `No other ${ENGINES.find((engine) => engine.id === target)?.label || target} bots are configured. Choose All engines to see every bot, or prepare a portable bundle for this engine.`}
+            </p>
+          )}
+        </FieldGroup>
+        {warnings.length > 0 && (
+          <ul className="handoff-warnings" aria-label="Handoff notes">
+            {warnings.map((warning) => <li key={warning}>{warning}</li>)}
+          </ul>
+        )}
+        {prompt && <pre className="handoff-preview" aria-label="Prepared handoff bundle">{prompt}</pre>}
+        <p className="form-error" role="alert">{error}</p>
+        <div className="handoff-actions">
+          <span className="field-hint">{tokens > 0 ? `About ${tokens.toLocaleString()} tokens` : ""}</span>
+          <div className="handoff-actions__buttons">
+            <button type="button" className="btn btn-sm btn-secondary" onClick={onClose} disabled={loading || continuing}>
+              Cancel
+            </button>
+            {!prompt ? (
+              <button type="button" className="btn btn-sm btn-primary" disabled={loading || !bot || (target === "all" && !targetBot)} onClick={() => void compile()}>
+                {loading ? "Preparing…" : "Prepare handoff"}
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-secondary"
+                  disabled={continuing}
+                  onClick={() => {
+                    if (!navigator.clipboard?.writeText) {
+                      setError("Clipboard access is unavailable. Select and copy the bundle above.");
+                      return;
+                    }
+                    void navigator.clipboard.writeText(prompt)
+                      .then(() => setCopied(true))
+                      .catch(() => setError("Could not access the clipboard. Select and copy the bundle above."));
+                  }}
+                >
+                  {copied ? "Copied" : "Copy bundle"}
+                </button>
+                {targetBot && (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-primary"
+                    disabled={continuing}
+                    onClick={() => {
+                      setContinuing(true);
+                      setError("");
+                      void onContinue(targetBot, prompt)
+                        .then(onClose)
+                        .catch((exc: Error) => setError(exc.message || "Could not continue handoff"))
+                        .finally(() => setContinuing(false));
+                    }}
+                  >
+                    {continuing ? "Starting…" : `Continue with @${targetBot}`}
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </div>
       </div>
     </Modal>
   );

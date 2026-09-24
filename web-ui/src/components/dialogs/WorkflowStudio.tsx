@@ -247,7 +247,7 @@ export function WorkflowStudio({ activePlan = null, draftKey, onDone, bots, demo
   const runWorkflow = async () => {
     setError("");
     if (demoMode) {
-      setNotice("Demo preview — run `uv run kyn serve` locally to execute workflows.");
+      setNotice("Demo preview — run `uv run ari serve` locally to execute workflows.");
       return;
     }
     if (!name.trim()) return setError("Give this workflow a name.");
@@ -360,7 +360,7 @@ export function WorkflowStudio({ activePlan = null, draftKey, onDone, bots, demo
                     onPointerCancel={() => setDrag(null)}
                   >
                     <span className="flow-node-index">{String(index + 1).padStart(2, "0")}</span>
-                    <span className="flow-node-kind">KYN bot</span>
+                    <span className="flow-node-kind">Ari bot</span>
                     <span className="flow-node-grip" aria-hidden>⠿</span>
                     {!readOnly && <button type="button" className="flow-node-remove" aria-label={`Remove node ${index + 1}`} onClick={() => removeNode(node.id)}>×</button>}
                   </header>

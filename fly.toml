@@ -1,4 +1,4 @@
-# Fly.io config for always-on KYN. Set app name with: fly launch --no-deploy
+# Fly.io config for always-on Ari. Set app name with: fly launch --no-deploy
 app = "kyn"
 primary_region = "iad"
 

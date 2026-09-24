@@ -3,17 +3,18 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#08070b" />
-    <title>KYN</title>
+    <meta name="theme-color" content="#1b1c1e" />
+    <meta name="description" content="One workspace for Kiro, OpenCode, and Codex agents, with reviewable work and clear handoffs." />
+    <title>Ari — one workspace for your agent crew</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="app.css" />
   </head>
   <body>
-    <main class="app-shell" aria-label="KYN">
+    <main class="app-shell" aria-label="Ari">
       <aside class="bot-rail" aria-label="Bots and recents">
         <div class="brand">
           <span class="brand-mark" aria-hidden="true"><img src="logo.svg" alt="" /></span>
-          <span class="brand-name">KYN</span>
+          <span class="brand-name">Ari</span>
         </div>
         <button class="new-bot-button" id="new-bot-button" type="button">New bot</button>
         <div class="rail-heading"><span>Bots</span><span id="bot-count"></span></div>
@@ -52,7 +53,7 @@
 
         <section class="conversation" id="conversation" aria-live="polite" aria-label="Conversation">
           <div class="welcome-state" id="welcome-state">
-            <h2>What should Kiro do?</h2>
+            <h2>What should your bot do?</h2>
             <p>Pick a bot, then talk here — or open Telegram in Recents and watch the phone thread live.</p>
           </div>
         </section>
@@ -61,7 +62,7 @@
           <p class="composer-mirror" id="composer-mirror" hidden>Reply from iPhone. This view is a live mirror of the phone thread.</p>
           <label class="sr-only" for="message">Message your bot</label>
           <div class="composer-shell">
-            <textarea id="message" name="message" rows="1" placeholder="Message Kiro" disabled></textarea>
+            <textarea id="message" name="message" rows="1" placeholder="Message your bot" disabled></textarea>
             <div class="composer-footer">
               <span id="composer-hint">Select a bot to begin</span>
               <div class="composer-actions">
@@ -109,7 +110,7 @@
           <div class="management-list" id="routine-list"><p class="activity-empty">Choose a bot to view routines.</p></div>
           <section class="connections-section">
             <div class="panel-action-row"><p>Build, verify, repair, and review in an isolated worktree.</p><button class="mini-primary" id="new-coding-button" type="button">Add</button></div>
-            <div class="management-list" id="coding-list"><p class="activity-empty">No coding executions yet.</p></div>
+            <div class="management-list" id="coding-list"><p class="activity-empty">No coding tasks yet.</p></div>
           </section>
           <section class="connections-section">
             <div class="panel-action-row"><p>Coordinate several bots on one goal.</p><button class="mini-primary" id="new-delegation-button" type="button">Add</button></div>
@@ -164,7 +165,7 @@
           <div><p class="eyebrow">New bot</p><h2 id="create-title">Create a bot</h2></div>
           <button class="icon-button" value="cancel" aria-label="Close">Close</button>
         </div>
-        <p class="dialog-copy">A bot keeps its Kiro session and conversation context between runs.</p>
+        <p class="dialog-copy">Ari keeps each bot's conversation and routes its work through the configured engine.</p>
         <label>Name <input id="bot-name" name="name" autocomplete="off" required maxlength="60" placeholder="release-sherpa" /></label>
         <label>Working directory <input id="bot-cwd" name="cwd" required placeholder="/Users/you/project" /></label>
         <details>

@@ -11,7 +11,7 @@ export interface ToolEntry {
 }
 
 /**
- * Built-in tool families KYN governs. Deny/allow rules match on these names,
+ * Built-in tool families Ari governs. Deny/allow rules match on these names,
  * so the console offers them as first-class choices instead of free text.
  */
 export const BUILTIN_TOOLS: ToolEntry[] = [

@@ -1,0 +1,372 @@
+.setup-page {
+  min-height: 100dvh;
+  overflow-y: auto;
+  background: var(--bg);
+  color: var(--fg);
+  padding: 34px 32px 48px;
+}
+
+.setup-shell {
+  width: min(100%, 900px);
+  margin: 0 auto;
+}
+
+.setup-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 40px;
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.setup-brand img {
+  display: block;
+  object-fit: contain;
+}
+
+.setup-brand-rule {
+  height: 20px;
+  width: 1px;
+  margin: 0 2px 0 5px;
+  background: var(--hairline-strong);
+}
+
+.setup-brand-caption,
+.setup-eyebrow {
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.11em;
+}
+
+.setup-intro {
+  max-width: 680px;
+  padding: clamp(46px, 9vh, 94px) 0 40px;
+}
+
+.setup-eyebrow {
+  margin: 0 0 11px;
+}
+
+.setup-intro h1 {
+  max-width: 650px;
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(38px, 6vw, 58px);
+  font-weight: 600;
+  letter-spacing: -0.055em;
+  line-height: 1.04;
+}
+
+.setup-lead {
+  max-width: 600px;
+  margin: 19px 0 0;
+  color: var(--fg-secondary);
+  font-size: 16px;
+  line-height: 1.65;
+}
+
+.setup-engines,
+.setup-next,
+.setup-phone {
+  border-top: 1px solid var(--hairline-strong);
+  padding: 25px 0 27px;
+}
+
+.setup-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.setup-section-heading h2,
+.setup-next h2,
+.setup-phone h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 550;
+  letter-spacing: -0.035em;
+}
+
+.setup-quiet-button,
+.setup-install-button,
+.setup-continue {
+  min-height: 40px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 550;
+  padding: 0 14px;
+  transition: background var(--dur-fast) ease, border-color var(--dur-fast) ease;
+}
+
+.setup-quiet-button:hover,
+.setup-install-button:hover {
+  background: var(--bg-hover);
+  border-color: var(--fg-muted);
+}
+
+.setup-install-button {
+  min-width: 106px;
+}
+
+.setup-quiet-button:disabled,
+.setup-install-button:disabled {
+  cursor: progress;
+  opacity: 0.55;
+}
+
+.setup-engine-list {
+  border-top: 1px solid var(--hairline);
+}
+
+.setup-engine {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 77px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.setup-engine-main {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  min-width: 0;
+}
+
+.setup-engine-indicator {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 9px;
+  border: 1px solid var(--fg-muted);
+  border-radius: 50%;
+}
+
+.setup-engine-indicator.is-ready {
+  border-color: var(--success);
+  background: var(--success);
+}
+
+.setup-engine h3 {
+  margin: 0 0 3px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.setup-engine p,
+.setup-next p:not(.setup-eyebrow),
+.setup-phone p:not(.setup-eyebrow),
+.setup-note,
+.setup-inline-status {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.setup-engine p {
+  max-width: min(56vw, 620px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.setup-ready-label {
+  color: var(--success);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.setup-note {
+  margin-top: 13px;
+}
+
+.setup-next {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 0.8fr);
+  align-items: center;
+  gap: 32px;
+}
+
+.setup-next p:not(.setup-eyebrow),
+.setup-phone p:not(.setup-eyebrow) {
+  max-width: 590px;
+  margin-top: 8px;
+}
+
+.setup-command-list {
+  border-top: 1px solid var(--hairline);
+}
+
+.setup-command-list button {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr) auto;
+  align-items: center;
+  width: 100%;
+  min-height: 40px;
+  gap: 8px;
+  border: 0;
+  border-bottom: 1px solid var(--hairline);
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+  text-align: left;
+  font-size: 12px;
+}
+
+.setup-command-list button:hover {
+  background: var(--bg-hover);
+}
+
+.setup-command-list code,
+.setup-footer code {
+  color: var(--fg-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.setup-command-list button > span:last-child {
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.setup-phone {
+  padding-bottom: 24px;
+}
+
+.setup-tunnel-command {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: min(100%, 420px);
+  min-height: 42px;
+  margin-top: 16px;
+  padding: 0 12px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-sm);
+  background: var(--bg-raised);
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.setup-tunnel-command:hover {
+  background: var(--bg-hover);
+}
+
+.setup-tunnel-command code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.setup-tunnel-command span {
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.setup-doc-link {
+  display: inline-block;
+  margin-top: 11px;
+  color: var(--fg-secondary);
+  font-size: 12px;
+}
+
+.setup-feedback {
+  margin: 0 0 15px;
+  color: var(--success);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.setup-feedback.is-error {
+  color: var(--danger);
+}
+
+.setup-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  border-top: 1px solid var(--hairline-strong);
+  padding-top: 20px;
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.setup-continue {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border-color: var(--contrast-bg);
+  background: var(--contrast-bg);
+  color: var(--contrast-fg);
+  padding: 0 18px;
+}
+
+.setup-continue:hover {
+  opacity: 0.88;
+}
+
+@media (max-width: 640px) {
+  .setup-page {
+    padding: 22px 24px 30px;
+  }
+
+  .setup-brand-caption {
+    font-size: 9px;
+  }
+
+  .setup-intro {
+    padding: 55px 0 34px;
+  }
+
+  .setup-intro h1 {
+    font-size: clamp(38px, 11vw, 48px);
+  }
+
+  .setup-lead {
+    font-size: 15px;
+  }
+
+  .setup-next {
+    grid-template-columns: 1fr;
+    gap: 17px;
+  }
+
+  .setup-engine {
+    min-height: 70px;
+  }
+
+  .setup-engine p {
+    max-width: 50vw;
+  }
+
+  .setup-footer {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 13px;
+  }
+
+  .setup-continue {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .setup-quiet-button,
+  .setup-install-button,
+  .setup-continue {
+    transition: none;
+  }
+}

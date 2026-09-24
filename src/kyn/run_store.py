@@ -142,6 +142,7 @@ class RunRepository:
         limit: int = 100,
         after_created_at: str | None = None,
         after_run_id: str | None = None,
+        newest_first: bool = False,
     ) -> list[DurableRun]:
         bounded_limit = min(max(int(limit), 1), 1_000)
         clauses: list[str] = []
@@ -167,9 +168,10 @@ class RunRepository:
             )
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         values.append(bounded_limit)
+        ordering = "DESC" if newest_first else "ASC"
         with self.store.connect() as db:
             rows = db.execute(
-                f"SELECT * FROM durable_runs {where} ORDER BY created_at, run_id LIMIT ?",
+                f"SELECT * FROM durable_runs {where} ORDER BY created_at {ordering}, run_id {ordering} LIMIT ?",
                 values,
             ).fetchall()
         return [_run_from_row(row) for row in rows]

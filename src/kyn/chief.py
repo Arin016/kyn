@@ -62,7 +62,7 @@ def ensure_fleet_plugin(plugins: PluginRegistry) -> None:
 
     desired = Plugin(
         id=FLEET_PLUGIN_ID,
-        name="KYN Fleet Control",
+        name="Ari Fleet Control",
         transport="stdio",
         command=sys.executable,
         args=("-m", "kyn.fleet_mcp"),

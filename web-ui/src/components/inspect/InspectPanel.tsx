@@ -13,6 +13,7 @@ import type {
   ChannelEvent,
   CodingExecution,
   DelegationPlan,
+  MemoryFact,
   MemoryRecord,
   Plugin,
   Policy,
@@ -40,6 +41,7 @@ export interface ManagementData {
   channels: Channel[];
   channelEvents: ChannelEvent[];
   memoryRecords: MemoryRecord[];
+  memoryFacts: MemoryFact[];
 }
 
 interface Props {
@@ -68,6 +70,8 @@ interface Props {
   onStopRun: () => void;
   /** Bumped whenever a run ends so usage re-reads. */
   usageRefreshKey: number;
+  showToast: (message: string, isError?: boolean) => void;
+  onFactsChanged: () => void;
 }
 
 export function InspectPanel({
@@ -93,6 +97,8 @@ export function InspectPanel({
   onHandoff,
   onStopRun,
   usageRefreshKey,
+  showToast,
+  onFactsChanged,
 }: Props) {
   return (
     <AnimatePresence>
@@ -185,7 +191,13 @@ export function InspectPanel({
                 actions={safetyActions}
               />
             ) : (
-              <MemoryTab records={management.memoryRecords} />
+              <MemoryTab
+                botName={bot?.name || ""}
+                records={management.memoryRecords}
+                facts={management.memoryFacts}
+                onFactsChanged={onFactsChanged}
+                showToast={showToast}
+              />
             )}
           </div>
         </motion.aside>

@@ -38,14 +38,14 @@ function captionFor(frame: number): { text: string; subtext?: string; appearAt: 
   if (frame >= scenes.selectBot.start && frame < scenes.type.start) {
     return {
       text: "Named agents, not throwaway chats",
-      subtext: "Each bot keeps its Kiro session and history.",
+      subtext: "Kiro, OpenCode, and Codex share one durable workspace.",
       appearAt: scenes.selectBot.start,
     };
   }
   if (frame >= scenes.type.start && frame < scenes.stream.start) {
     return {
       text: "Talk in the control room",
-      subtext: "Same ChatGPT-class thread. Local only for Laptop.",
+      subtext: "A responsive control room for chat, tasks, and approvals.",
       appearAt: scenes.type.start,
     };
   }
@@ -72,8 +72,8 @@ function captionFor(frame: number): { text: string; subtext?: string; appearAt: 
   }
   if (frame >= scenes.approve.start && frame < scenes.close.start) {
     return {
-      text: "Approvals stay in Inspect",
-      subtext: "Allow once or Deny. Never a buried Safety tab.",
+      text: "Work comes together in one inbox",
+      subtext: "Review approvals, tasks, workflows, and channel events in context.",
       appearAt: scenes.approve.start,
     };
   }

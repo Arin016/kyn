@@ -211,7 +211,7 @@ export function BotTab({
           variant="block"
         />
         <p className="field-hint">
-          Switch mid-conversation. KYN applies it to the live session when the engine allows it,
+          Switch mid-conversation. Ari applies it to the live session when the engine allows it,
           otherwise it takes effect on the next run.
         </p>
       </section>

@@ -1,4 +1,4 @@
-/** True on static marketing deploys (e.g. Vercel) with no KYN daemon. */
+/** True on static marketing deploys (e.g. Vercel) with no Ari daemon. */
 const env = (import.meta as unknown as { env?: Record<string, string | boolean> }).env ?? {};
 
 export const apiBase = String(env.VITE_KYN_API_URL ?? "").replace(/\/$/, "");

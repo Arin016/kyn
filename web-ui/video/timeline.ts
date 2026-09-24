@@ -38,10 +38,10 @@ export const scenes = {
   close: { start: sec(62), end: sec(75) },
 } as const;
 
-export const PROMPT = "Summarize what this repo does and list the riskiest TODOs.";
+export const PROMPT = "Summarize Ari's current product and its most important boundaries.";
 export const ASSISTANT_FULL =
-  "This is a local control plane for durable Kiro agents. It owns sessions, channels, approvals, and verified coding handoffs around `kiro-cli acp`.\n\nRiskiest TODOs:\n1. Harden remote deployment auth\n2. Expand Telegram group mention UX\n3. Document workspace lease recovery";
-export const TELEGRAM_IN = "Hey kiro — anything blocked on the launch checklist?";
+  "Ari is a shared workspace for Kiro, OpenCode, and Codex. It brings bots, handoffs, a work inbox, MCP plugins, channels, schedules, and reviewable Git tasks together.\n\nCurrent boundaries:\n1. No pull-request publishing or CI follow-up\n2. No native Gmail synchronization\n3. No organization accounts or SSO";
+export const TELEGRAM_IN = "Hey Ari — anything blocked on the launch checklist?";
 export const TELEGRAM_OUT = "Nothing blocking. Checklist is green; I'll watch the Slack deploy thread.";
 
 export const WORKFLOW_NAME = "Ship the release safely";

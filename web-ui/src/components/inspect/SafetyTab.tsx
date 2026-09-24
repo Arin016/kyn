@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AuditItem, BotPluginBinding, Plugin, Policy } from "../../types";
 import { shortTime } from "../../lib/format";
 import { ToolPermissions } from "./ToolPermissions";
@@ -55,8 +55,16 @@ export function SafetyTab({ policy, plugins, bindings, audit, actions }: Props) 
   const [savedAt, setSavedAt] = useState("");
   const [dirty, setDirty] = useState(false);
 
+  // Sync on policy CONTENT, not object identity: background refetches
+  // (reconnect heal, tab switches) mint fresh objects for identical content,
+  // which must not wipe unsaved edits. A genuinely different policy (bot
+  // switch, server-side change) still syncs and resets the form.
+  const syncedRef = useRef("");
   useEffect(() => {
     if (!policy) return;
+    const snapshot = JSON.stringify(policy);
+    if (snapshot === syncedRef.current) return;
+    syncedRef.current = snapshot;
     setApprovalMode(policy.approval_mode || "ask");
     setAllowedTools(policy.allowed_tools || []);
     setDeniedTools(policy.denied_tools || []);

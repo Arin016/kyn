@@ -1,7 +1,7 @@
-/* KYN landing — same skin as the control room: paper canvas, ink type,
+/* Ari landing — same skin as the control room: paper canvas, ink type,
    hairline rules, frosted paper glass, mono eyebrows, pill buttons.
    Strictly black and white: no hue anywhere, state carried by weight and form.
-   `html[data-kyn-theme="dark"]` flips the same tokens to the black palette, so
+   `html[data-ari-theme="dark"]` flips the same tokens to the black palette, so
    the marketing pages follow the console theme. */
 
 .ed {
@@ -67,7 +67,7 @@
   text-rendering: optimizeLegibility;
 }
 
-html[data-kyn-theme="dark"] .ed {
+html[data-ari-theme="dark"] .ed {
   --paper: #060806;
   --paper-alt: #0b0e0b;
   --paper-lift: #10140f;
@@ -422,7 +422,7 @@ html[data-kyn-theme="dark"] .ed {
   filter: none;
 }
 
-html[data-kyn-theme="dark"] .ed-hero-mark { opacity: 0.075; }
+html[data-ari-theme="dark"] .ed-hero-mark { opacity: 0.075; }
 
 @media (prefers-reduced-motion: no-preference) {
   .ed-hero-mark {

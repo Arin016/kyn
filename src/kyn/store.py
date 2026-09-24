@@ -14,7 +14,14 @@ from .providers import normalize_engine
 
 
 def default_home() -> Path:
-    return Path(os.environ.get("KYN_HOME", "~/.kyn")).expanduser()
+    configured = os.environ.get("ARI_HOME") or os.environ.get("KYN_HOME")
+    if configured:
+        return Path(configured).expanduser()
+    ari_home = Path("~/.ari").expanduser()
+    legacy_home = Path("~/.kyn").expanduser()
+    if ari_home.exists() or not legacy_home.exists():
+        return ari_home
+    return legacy_home
 
 
 @dataclass(slots=True)
@@ -152,6 +159,11 @@ class Store:
                 """,
                 (bot_name, session_id, transcript_path, _now()),
             )
+
+    def delete_conversation(self, bot_name: str) -> None:
+        """Forget a native session when the operator explicitly resets it."""
+        with self.connect() as db:
+            db.execute("DELETE FROM conversations WHERE bot_name = ?", (bot_name,))
 
     def begin_turn(self, bot_name: str, prompt: str, engine: str = "") -> int:
         with self.connect() as db:

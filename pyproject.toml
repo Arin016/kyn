@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "kyn"
+name = "ari"
 version = "0.1.0"
-description = "KYN — persistent local agents and orchestration on Kiro ACP"
+description = "Ari — a shared workspace for Kiro, OpenCode, and Codex agents"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -24,6 +24,7 @@ dev = [
 ]
 
 [project.scripts]
+ari = "kyn.cli:main"
 kyn = "kyn.cli:main"
 
 [tool.hatch.build.targets.wheel]

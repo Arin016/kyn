@@ -83,13 +83,11 @@ class BotOrchestrator:
             # A per-run workspace is an isolated execution context. Reusing or
             # replacing the bot's durable conversation would mix cwd-specific
             # context and make a later normal chat point at the wrong tree.
-            # A reset-to-default model also skips the resume: the saved native
-            # session restores whatever model it last ran with, so loading it
-            # would silently resurrect the model the user just cleared. Durable
-            # turns stay in Store.history, so no conversation is lost.
+            # Explicit model resets clear the saved conversation in
+            # Engine.set_bot_model. An empty model at ordinary startup means
+            # "use the engine default" and must still resume the durable thread.
             saved = None
-            model_reset = engine.supports_models and not bot.model
-            if cwd_override is None and engine.resume_native_conversation and not model_reset:
+            if cwd_override is None and engine.resume_native_conversation:
                 saved = self.store.conversation(bot.name)
             if saved:
                 session_id, transcript_path = saved
@@ -99,7 +97,13 @@ class BotOrchestrator:
                         transcript_path=transcript_path,
                         mcp_servers=mcp_servers,
                     )
-                except AcpError:
+                except AcpError as exc:
+                    _LOGGER.warning(
+                        "Could not resume saved native session for bot %s; "
+                        "starting a fresh session with durable memory fallback: %s",
+                        bot.name,
+                        exc,
+                    )
                     self.session = None
                     # Kiro 2.19 may exit just after returning a load error. There is
                     # a race where returncode is still None but the next write is

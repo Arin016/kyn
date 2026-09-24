@@ -28,6 +28,38 @@ async def _wait_for_status(engine: Engine, run_id: str, status: str) -> dict:
     raise AssertionError(f"run {run_id} did not reach {status}")
 
 
+def test_list_runs_returns_compact_durable_summaries_newest_first(tmp_path: Path) -> None:
+    store = Store(tmp_path)
+    store.put_bot(Bot(name="builder", cwd=str(tmp_path), engine="codex"))
+    repository = RunRepository(store)
+    repository.enqueue("run-a", "builder", "Older task")
+    repository.enqueue("run-b", "builder", "Newer task")
+    engine = Engine(store=store, run_repository=repository)
+
+    runs = asyncio.run(engine.list_runs(limit=1))
+
+    assert len(runs) == 1
+    assert runs[0]["id"] == "run-b"
+    assert runs[0]["engine"] == "codex"
+    assert runs[0]["message"] == "Newer task"
+    assert "events" not in runs[0]
+
+
+def test_get_run_returns_durable_nonterminal_summary_without_event_history(tmp_path: Path) -> None:
+    store = Store(tmp_path)
+    store.put_bot(Bot(name="builder", cwd=str(tmp_path)))
+    repository = RunRepository(store)
+    repository.enqueue("queued-run", "builder", "Recover this task")
+    engine = Engine(store=store, run_repository=repository)
+
+    run = asyncio.run(engine.get_run("queued-run"))
+
+    assert run["id"] == "queued-run"
+    assert run["status"] == "queued"
+    assert run["message"] == "Recover this task"
+    assert run["events"] == []
+
+
 class FakeSession:
     def __init__(self) -> None:
         self.decisions: list[tuple[str, str | int, bool]] = []

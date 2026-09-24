@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import api from "../../api";
 import { DEMO_GROUP_DETAIL, demoGroupReply } from "../../lib/demoConsole";
-import { buildGroupCommands, parseMentions, splitMentions } from "../../lib/slash";
+import {
+  buildGroupCommands,
+  parseMentions,
+  splitMentions,
+} from "../../lib/slash";
 import type { Bot, GroupDetail, GroupMessage } from "../../types";
 import { BotAvatar } from "../BotAvatar";
 import { Composer } from "../chat/Composer";
@@ -17,7 +21,10 @@ const STATUS_LABEL: Record<string, string> = {
   error: "Error",
 };
 
-function mergeMessages(current: GroupMessage[], incoming: GroupMessage[]): GroupMessage[] {
+function mergeMessages(
+  current: GroupMessage[],
+  incoming: GroupMessage[],
+): GroupMessage[] {
   if (incoming.length === 0) return current;
   const seen = new Set(current.map((message) => message.id));
   const merged = [...current];
@@ -34,7 +41,10 @@ function timeLabel(value?: string): string {
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  return date.toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 /** Message body with @mentions highlighted (no HTML injection involved). */
@@ -44,7 +54,9 @@ function MessageBody({ text, members }: { text: string; members: string[] }) {
     <>
       {segments.map((segment, index) =>
         segment.kind === "mention" ? (
-          <span className="group-mention" key={index}>@{segment.value}</span>
+          <span className="group-mention" key={index}>
+            @{segment.value}
+          </span>
         ) : (
           <span key={index}>{segment.value}</span>
         ),
@@ -62,24 +74,38 @@ interface Props {
   onDeleted: () => void;
 }
 
-export function GroupChat({ groupId, bots, marketing, onBack, onChanged, onDeleted }: Props) {
+export function GroupChat({
+  groupId,
+  bots,
+  marketing,
+  onBack,
+  onChanged,
+  onDeleted,
+}: Props) {
   const { showToast } = useToast();
   const [detail, setDetail] = useState<GroupDetail | null>(null);
   const [messages, setMessages] = useState<GroupMessage[]>([]);
   const [error, setError] = useState("");
   const [contextNote, setContextNote] = useState("");
   const lastIdRef = useRef(0);
+  const refreshGenRef = useRef(0);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const refresh = useCallback(
     async (full = true) => {
       if (marketing) return;
+      // Generation guard: a slow poll for the previous group must never
+      // write into the newly opened one.
+      const generation = ++refreshGenRef.current;
       try {
         const data = await api.group(groupId, full ? 0 : lastIdRef.current);
+        if (refreshGenRef.current !== generation) return;
         setDetail(data);
         setContextNote(data.context_note || "");
         setMessages((current) =>
-          full ? mergeMessages([], data.messages) : mergeMessages(current, data.messages),
+          full
+            ? mergeMessages([], data.messages)
+            : mergeMessages(current, data.messages),
         );
         lastIdRef.current = Math.max(
           lastIdRef.current,
@@ -87,6 +113,7 @@ export function GroupChat({ groupId, bots, marketing, onBack, onChanged, onDelet
         );
         setError("");
       } catch (exc) {
+        if (refreshGenRef.current !== generation) return;
         setError((exc as Error).message || "Could not load this group");
       }
     },
@@ -95,7 +122,10 @@ export function GroupChat({ groupId, bots, marketing, onBack, onChanged, onDelet
 
   useEffect(() => {
     if (marketing) {
-      const demo = { ...DEMO_GROUP_DETAIL, group: { ...DEMO_GROUP_DETAIL.group, id: groupId } };
+      const demo = {
+        ...DEMO_GROUP_DETAIL,
+        group: { ...DEMO_GROUP_DETAIL.group, id: groupId },
+      };
       setDetail(demo);
       setMessages(demo.messages);
       lastIdRef.current = demo.messages.length;
@@ -169,7 +199,9 @@ export function GroupChat({ groupId, bots, marketing, onBack, onChanged, onDelet
       }
       try {
         const data = await api.postGroupMessage(groupId, text, true, mentioned);
-        setMessages((current) => mergeMessages(current, [data.message, ...data.group.messages]));
+        setMessages((current) =>
+          mergeMessages(current, [data.message, ...data.group.messages]),
+        );
         lastIdRef.current = Math.max(
           lastIdRef.current,
           data.message.id,
@@ -177,11 +209,16 @@ export function GroupChat({ groupId, bots, marketing, onBack, onChanged, onDelet
         );
         setDetail(data.group);
         if (mentioned.length > 0) {
-          showToast(`Asked ${mentioned.join(", ")} to reply — the rest will hold.`);
+          showToast(
+            `Asked ${mentioned.join(", ")} to reply — the rest will hold.`,
+          );
         }
         onChanged();
       } catch (exc) {
-        showToast((exc as Error).message || "Could not send that message", true);
+        showToast(
+          (exc as Error).message || "Could not send that message",
+          true,
+        );
       }
     },
     [groupId, group?.members, memberNames, marketing, onChanged, showToast],
@@ -251,16 +288,37 @@ export function GroupChat({ groupId, bots, marketing, onBack, onChanged, onDelet
   return (
     <div className="group-surface">
       <header className="group-header">
-        <button type="button" className="group-back" onClick={onBack} aria-label="Back to bots">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-            <path d="M15 6l-6 6 6 6" strokeLinecap="round" strokeLinejoin="round" />
+        <button
+          type="button"
+          className="group-back"
+          onClick={onBack}
+          aria-label="Back to bots"
+        >
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            aria-hidden
+          >
+            <path
+              d="M15 6l-6 6 6 6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
           All chats
         </button>
 
         <div className="group-stack" aria-hidden>
           {roster.slice(0, 4).map((bot, index) => (
-            <span key={bot.name} className="group-stack-item" style={{ zIndex: 4 - index }}>
+            <span
+              key={bot.name}
+              className="group-stack-item"
+              style={{ zIndex: 4 - index }}
+            >
               <BotAvatar name={bot.name} size={34} />
             </span>
           ))}
@@ -269,7 +327,10 @@ export function GroupChat({ groupId, bots, marketing, onBack, onChanged, onDelet
         <div className="group-heading">
           <strong>{group?.name || "Group chat"}</strong>
           <span className="group-heading-line">
-            <span className={`status-pill${running ? "" : " quiet"}`} data-state={running ? "running" : "idle"}>
+            <span
+              className={`status-pill${running ? "" : " quiet"}`}
+              data-state={running ? "running" : "idle"}
+            >
               <span className="status-dot" aria-hidden />
               {speaking
                 ? `${speaking} is replying`
@@ -285,15 +346,29 @@ export function GroupChat({ groupId, bots, marketing, onBack, onChanged, onDelet
 
         <div className="group-actions">
           {running ? (
-            <button type="button" className="mini-danger" onClick={() => void stop()}>
+            <button
+              type="button"
+              className="mini-danger"
+              onClick={() => void stop()}
+            >
               Stop
             </button>
           ) : (
-            <button type="button" className="mini-primary" onClick={() => void start()}>
-              {status === "idle" && messages.length === 0 ? "Start round" : "Next round"}
+            <button
+              type="button"
+              className="mini-primary"
+              onClick={() => void start()}
+            >
+              {status === "idle" && messages.length === 0
+                ? "Start round"
+                : "Next round"}
             </button>
           )}
-          <button type="button" className="mini-ghost" onClick={() => void remove()}>
+          <button
+            type="button"
+            className="mini-ghost"
+            onClick={() => void remove()}
+          >
             Delete
           </button>
         </div>
@@ -314,12 +389,23 @@ export function GroupChat({ groupId, bots, marketing, onBack, onChanged, onDelet
             }
             const human = message.role === "human";
             return (
-              <li key={message.id} className={`group-msg${human ? " is-human" : ""}`}>
-                {!human && <BotAvatar name={message.author} size={32} className="group-msg-avatar" />}
+              <li
+                key={message.id}
+                className={`group-msg${human ? " is-human" : ""}`}
+              >
+                {!human && (
+                  <BotAvatar
+                    name={message.author}
+                    size={32}
+                    className="group-msg-avatar"
+                  />
+                )}
                 <div className="group-msg-body">
                   <span className="group-msg-meta">
                     <strong>{human ? "You" : message.author}</strong>
-                    {timeLabel(message.created_at) ? <span>{timeLabel(message.created_at)}</span> : null}
+                    {timeLabel(message.created_at) ? (
+                      <span>{timeLabel(message.created_at)}</span>
+                    ) : null}
                   </span>
                   <div className="group-bubble">
                     <MessageBody text={message.text} members={memberNames} />
@@ -330,13 +416,20 @@ export function GroupChat({ groupId, bots, marketing, onBack, onChanged, onDelet
           })}
           {speaking ? (
             <li className="group-msg">
-              <BotAvatar name={speaking} size={32} className="group-msg-avatar" />
+              <BotAvatar
+                name={speaking}
+                size={32}
+                className="group-msg-avatar"
+              />
               <div className="group-msg-body">
                 <span className="group-msg-meta">
                   <strong>{speaking}</strong>
                   <span>typing</span>
                 </span>
-                <div className="group-bubble is-typing" aria-label={`${speaking} is typing`}>
+                <div
+                  className="group-bubble is-typing"
+                  aria-label={`${speaking} is typing`}
+                >
                   <span />
                   <span />
                   <span />
@@ -346,7 +439,8 @@ export function GroupChat({ groupId, bots, marketing, onBack, onChanged, onDelet
           ) : null}
           {messages.length === 0 && !speaking ? (
             <li className="group-note">
-              No messages yet. Start a round and the bots will take turns working the shared aim.
+              No messages yet. Start a round and the bots will take turns
+              working the shared aim.
             </li>
           ) : null}
         </ol>
@@ -355,7 +449,10 @@ export function GroupChat({ groupId, bots, marketing, onBack, onChanged, onDelet
       <div className="group-context">
         <div className="group-context-head">
           <span className="group-context-title">Handoff brief</span>
-          <span className="group-context-hint">Pinned context every agent sees — carry findings across bots without loss.</span>
+          <span className="group-context-hint">
+            Pinned context every agent sees — carry findings across bots without
+            loss.
+          </span>
         </div>
         <textarea
           className="group-context-input"
@@ -364,13 +461,18 @@ export function GroupChat({ groupId, bots, marketing, onBack, onChanged, onDelet
           placeholder="e.g. scout mapped the blockers; writer owns the changelog. Reviewer already approved sections 1–3…"
           onChange={(event) => setContextNote(event.target.value)}
           onBlur={() => {
-            if (contextNote.trim() !== (detail?.context_note || "").trim()) void saveContext(contextNote);
+            if (contextNote.trim() !== (detail?.context_note || "").trim())
+              void saveContext(contextNote);
           }}
           aria-label="Pinned handoff brief for every agent in this group"
         />
         {contextNote.trim() !== (detail?.context_note || "").trim() && (
           <div className="group-context-actions">
-            <button type="button" className="mini-primary" onClick={() => void saveContext(contextNote)}>
+            <button
+              type="button"
+              className="mini-primary"
+              onClick={() => void saveContext(contextNote)}
+            >
               Pin brief
             </button>
             <button

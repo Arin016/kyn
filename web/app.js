@@ -76,7 +76,8 @@ function normalizeBots(data) {
 }
 
 function botName(bot) { return bot?.name || bot?.id || ""; }
-function botMeta(bot) { return bot?.model || bot?.agent || bot?.cwd || "Persistent Kiro agent"; }
+function engineLabel(bot) { return ({ kiro: "Kiro", opencode: "OpenCode", codex: "Codex" })[String(bot?.engine || "").toLowerCase()] || "Ari"; }
+function botMeta(bot) { return bot?.model || bot?.agent || bot?.cwd || "Persistent agent"; }
 function setConnection(kind, label) { elements.dot.className = `connection-dot ${kind}`; elements.connection.textContent = label; }
 
 function setRunState(kind, title, detail) {
@@ -237,9 +238,9 @@ function renderRemoteThread() {
   }
   for (const event of events) {
     addMessage(event.text, "channel", addTurn(channel?.kind === "telegram" ? "Telegram" : (channel?.kind || "Remote")));
-    if (event.response_text) addMessage(event.response_text, "assistant", addTurn("Kiro"));
+    if (event.response_text) addMessage(event.response_text, "assistant", addTurn(engineLabel(state.bot)));
     else if (["queued", "running"].includes(event.status)) {
-      const turn = addTurn("Kiro");
+      const turn = addTurn(engineLabel(state.bot));
       const node = addMessage("", "assistant", turn);
       node.append(make("span", "streaming-cursor"));
       state.messages.set("assistant", node);
@@ -351,7 +352,7 @@ function renderHistory(data) {
   const inner = conversationShell();
   if (!turns.length) {
     const empty = make("div", "history-empty");
-    empty.append(make("h2", "", "What should Kiro do?"));
+    empty.append(make("h2", "", "What should your bot do?"));
     empty.append(make("p", "", "Ask this bot to inspect a workspace, plan a task, or take action with your approval."));
     inner.append(empty);
     return;
@@ -359,7 +360,7 @@ function renderHistory(data) {
   for (const turn of turns) {
     const prompt = turn.prompt || turn.message || turn.input || "";
     if (prompt) addMessage(prompt, "user", addTurn("You"));
-    const assistantTurn = addTurn("Kiro");
+    const assistantTurn = addTurn(engineLabel(state.bot));
     const answer = make("div", "message assistant");
     let sawText = false;
     for (const storedEvent of historyEvents(turn)) {
@@ -646,7 +647,7 @@ function receiveEvent(payload) {
   const text = eventText(event);
   if (kind === "text" || kind === "agent_message_chunk" || kind === "assistant") {
     let node = state.messages.get("assistant");
-    if (!node) { const turn = addTurn("Kiro"); node = addMessage("", "assistant", turn); node.append(make("span", "streaming-cursor")); state.messages.set("assistant", node); }
+    if (!node) { const turn = addTurn(engineLabel(state.bot)); node = addMessage("", "assistant", turn); node.append(make("span", "streaming-cursor")); state.messages.set("assistant", node); }
     const cursor = node.querySelector(".streaming-cursor");
     if (cursor) node.removeChild(cursor);
     node.append(document.createTextNode(text));
@@ -761,12 +762,12 @@ async function submitTurn(event) {
   const message = elements.input.value.trim(); if (!message || !state.bot || state.run) return;
   if (state.surface.kind === "channel") return;
   const priorEmpty = elements.conversation.querySelector(".history-empty"); priorEmpty?.remove();
-  addMessage(message, "user", addTurn("You")); elements.input.value = ""; resizeInput(); setRunState("running", "Starting", "Creating a persistent Kiro run…");
+  addMessage(message, "user", addTurn("You")); elements.input.value = ""; resizeInput(); setRunState("running", "Starting", `Creating a persistent ${engineLabel(state.bot)} run…`);
   try {
     const data = await request(`/api/bots/${encodeURIComponent(botName(state.bot))}/turns`, { method:"POST", body:JSON.stringify({ message }) });
     const id = data.run_id || data.id || data.run?.id;
     if (!id) throw new Error("The server did not return a run ID.");
-    state.run = { id: String(id) }; state.lastEvent = 0; state.messages.clear(); setRunState("running", "Working", "Kiro is working in this bot’s persistent session."); connectRun(); pollRun();
+    state.run = { id: String(id) }; state.lastEvent = 0; state.messages.clear(); setRunState("running", "Working", `${engineLabel(state.bot)} is working in this bot’s session.`); connectRun(); pollRun();
   } catch (error) { finishRun("Error", error.message); toast(error.message || "Could not start run", true); }
 }
 

@@ -1,5 +1,5 @@
 import React from "react";
-import { KiroGlyph } from "../src/components/KiroGlyph";
+import { AriGlyph } from "../src/components/AriGlyph";
 import { interpolate, springProgress, easeOutCubic } from "./motion";
 
 export const DemoCursor: React.FC<{
@@ -153,7 +153,7 @@ export const DemoBrandCard: React.FC<{ mode: "intro" | "outro"; frame: number; l
         }}
       >
         <div style={{ transform: `scale(${glyphScale})` }}>
-          <KiroGlyph size={96} title="KYN" />
+          <AriGlyph size={96} title="Ari" />
         </div>
         <div style={{ textAlign: "center" }}>
           <h1
@@ -166,7 +166,7 @@ export const DemoBrandCard: React.FC<{ mode: "intro" | "outro"; frame: number; l
               color: "#FFFFFF",
             }}
           >
-            KYN
+            Ari
           </h1>
           <p
             style={{
@@ -180,8 +180,8 @@ export const DemoBrandCard: React.FC<{ mode: "intro" | "outro"; frame: number; l
             }}
           >
             {mode === "intro"
-              ? "Beyond the terminal."
-              : "Persistent agents. Phone continuity. Approvals you can trust."}
+              ? "Your agents. One steady crew."
+              : "One workspace for Kiro, OpenCode, and Codex."}
           </p>
         </div>
         {mode === "outro" ? (
@@ -191,14 +191,14 @@ export const DemoBrandCard: React.FC<{ mode: "intro" | "outro"; frame: number; l
               opacity: springProgress(Math.max(0, localFrame - 18) / 30, 30),
               padding: "10px 18px",
               borderRadius: 999,
-              border: "1px solid rgba(176,139,255,0.4)",
-              color: "#B08BFF",
+              border: "1px solid rgba(225,228,232,0.24)",
+              color: "#D4D4D8",
               fontFamily: "Inter, sans-serif",
               fontSize: 15,
               fontWeight: 600,
             }}
           >
-            Local control plane · open the studio to iterate
+            One workspace · three engines · work you can review
           </div>
         ) : null}
       </div>
@@ -221,8 +221,8 @@ export const DemoHighlight: React.FC<{
       width,
       height,
       borderRadius: 12,
-      border: "2px solid rgba(176,139,255,0.55)",
-      boxShadow: "0 0 0 4px rgba(176,139,255,0.12)",
+      border: "2px solid rgba(225,228,232,0.55)",
+      boxShadow: "0 0 0 4px rgba(225,228,232,0.12)",
       zIndex: 800,
       pointerEvents: "none",
     }}
@@ -236,7 +236,7 @@ export const DemoHighlight: React.FC<{
           fontFamily: "Inter, sans-serif",
           fontSize: 13,
           fontWeight: 600,
-          color: "#B08BFF",
+          color: "#E4E6E8",
         }}
       >
         {label}

@@ -1,4 +1,4 @@
-"""Durable, authenticated external-channel ingestion for KYN.
+"""Durable, authenticated external-channel ingestion for Ari.
 
 Provider adapters normalize untrusted webhook payloads into a small common
 event.  The gateway owns deduplication, bounded source-thread context, run
@@ -762,7 +762,7 @@ class ChannelGateway:
                 self.memory.render_context,
                 binding.bot_name,
                 event.text,
-                exclude_scopes=(scope,),
+                exclude_scopes=(scope, "coding"),
                 char_budget=self.memory_chars,
             )
         except Exception:

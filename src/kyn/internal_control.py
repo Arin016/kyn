@@ -27,7 +27,7 @@ def ensure_control_plugin(plugins: PluginRegistry) -> None:
 
     desired = Plugin(
         id=CONTROL_PLUGIN_ID,
-        name="KYN Control",
+        name="Ari Control",
         transport="stdio",
         command=sys.executable,
         args=("-m", "kyn.control_mcp"),

@@ -1,76 +1,107 @@
-# KYN positioning
+# Ari positioning
 
-This document is the source of truth for product language. It keeps the public story outcome-led while preventing the marketing from outrunning the prototype.
+This is the source of truth for product language. Describe what the current app
+does and make its boundaries easy to find.
 
 ## One-line position
 
-KYN is the local control plane for persistent Kiro agents, recurring work, and governed coding handoffs.
+Ari is a shared workspace for Kiro, OpenCode, and Codex agents, with one place to
+route work, connect tools, follow progress, and review what comes back.
 
 ## Core promise
 
-Put agents to work beyond a single terminal session. Give named agents clear jobs, reach them from the surfaces where work arrives, let several move concurrently, and keep consequential decisions behind deterministic boundaries.
+Give each bot a clear role and the right engine. Carry work between agents with
+useful context, gather approvals and tasks in one work inbox, and keep important
+actions reviewable.
 
 ## Who it is for
 
-- Developers already using Kiro CLI who want work to survive a chat session.
-- Small engineering teams experimenting with named agent roles and repeatable workflows.
-- Builders who prefer a local, inspectable harness over opaque autonomy.
-- Teams prototyping channel-driven triage, scheduled work, or verified issue-to-handoff flows.
+- Developers who use more than one coding-agent engine.
+- Builders who want projects, bots, and ongoing work in one control room.
+- People who route issues and requests from chat or external channels to agents.
+- Developers who want isolated coding tasks, real checks, a second review, and
+  an explicit handoff before merging.
+- People who want to choose which MCP tools each bot can use.
 
 ## Message pillars
 
-### Persistent by design
+### One workspace for several engines
 
-Named agents retain a Kiro session, durable conversation history, and bounded shared memory. Accepted work can recover after a controller restart.
+Create named bots backed by Kiro, OpenCode, or Codex. Each engine keeps its own
+model access, account, and native tool execution. Ari provides the shared
+workspace around those engines.
 
-### Reachable where work happens
+### Move work forward with context
 
-The same named agent can receive work from the browser, Slack, GitHub, WhatsApp, normalized email events, signed webhooks, or Telegram. Source threads remain isolated.
+Hand off from one bot to another, including a bounded conversation summary and
+repository evidence. Create focused cross-bot calls or compose a durable team
+workflow with visible dependencies and outputs.
 
-### A roster, not one overloaded chat
+### Keep the queue legible
 
-Builders, reviewers, operators, triage agents, and coordinators can keep different context and policies. Independent agents can run concurrently; durable plans express dependencies.
-Plans can be spoken into existence through a governed bot tool or built in the dedicated Workflow playground. It provides a saved-plan rail, visual node-and-arrow canvas, gesture zoom, validation messages, and recorded bot outputs. A bot can call another named bot for a focused result.
+The Work inbox gathers pending approvals, tasks, runs, workflows, and incoming
+channel events. The Tasks view shows branch state, checks, reviewer findings,
+changed files, and the diff before merge or abandon.
 
-### Autonomy with a hard edge
+### Connect tools deliberately
 
-Policies, quotas, permission routing, workspace isolation, deterministic checks, mutation detection, and human handoffs live in code outside the model.
-Every consequential gate is an individual durable decision. There is no blanket trust switch.
+Browse the plugin catalogue, register MCP servers, and bind them to selected
+bots. Secrets are referenced through environment variables. Tool approvals
+follow the bot's configured policy.
 
-## Proof points
+### Make progress reviewable
 
-- Durable per-agent FIFO workers and restart recovery.
-- Cross-surface memory with immutable source records.
-- One-time and repeating routines.
-- Multi-agent DAG execution with cancellation and bounded concurrency.
-- Conversational team actuation, focused bot calls, and a no-code workflow playground with plan review.
-- Reload-safe interaction cards and Telegram inline Allow once / Deny callbacks.
-- Signature-verified remote channels and allow lists.
-- Detached Git workspaces and SHA-256 artifact manifests.
-- Build → check → bounded repair → independent review → human handoff.
-- Environment-reference-only plugin secrets and payload-free governance audit.
+Coding tasks use an isolated worktree and branch, run user-provided checks,
+allow bounded repair, and request an independent bot review. A person approves
+the handoff before Ari merges reviewed work into the selected base branch. Ari
+does not open pull requests or publish changes.
+
+## Current capabilities
+
+- Kiro, OpenCode, and Codex ACP engines, selected per bot.
+- Cross-engine handoff with a portable brief, recent history, and repository
+  evidence.
+- Per-bot conversations, policies, model settings, MCP connections, and memory.
+- A Work inbox for approvals, coding tasks, runs, workflows, and channel events.
+- Reviewable Git tasks with checks, bounded repair, an independent reviewer,
+  diff review, merge, and abandon actions.
+- Durable schedules, multi-bot workflows, and focused bot calls.
+- Plugin catalogue for MCP integrations and per-bot bindings.
+- Slack, GitHub, WhatsApp Cloud API, Telegram, normalized email webhooks, and
+  signed generic webhooks.
+- A responsive browser control room and macOS app with local data storage.
 
 ## Honest boundaries
 
-- The current product is local-first. The host machine must remain online for remote channels and background work.
-- The daemon binds to loopback and has no built-in multi-user authentication or tenancy.
-- The coding lifecycle does not push, open a pull request, merge, or publish.
-- Email uses a normalized webhook contract rather than a native Gmail synchronizer.
-- There is no persistent browser/computer-use provider.
-- Delegation is a durable dependency graph with focused synchronous bot calls, not free-form asynchronous bot-to-bot chat.
+- The macOS app runs the Ari service on that Mac. It must stay online for
+  scheduled work and incoming channel events. Another device can connect over a
+  private Tailscale network.
+- Remote hosting is supported as a deployment option. The operator configures
+  its bearer token, origin policy, network exposure, and engine installations.
+- There are no built-in user accounts, SSO, organization tenancy, or team
+  administration.
+- Engine credentials and model availability come from the selected engine;
+  Ari does not supply provider accounts.
+- Coding tasks can merge reviewed work into a local base branch after approval.
+  Ari does not create pull requests or publish releases.
+- Email is a normalized signed webhook contract, not native Gmail sync.
+- Telegram uses polling from the Ari service; the other listed channel adapters
+  use provider webhooks.
+- Bots can make focused calls and follow durable workflow plans. They do not
+  have free-form asynchronous mailboxes.
 
 ## Voice
 
-- Lead with the job and finished outcome.
-- Explain the technical mechanism only as proof.
-- Prefer short, concrete sentences.
-- Use “agent” for the general concept and “bot” when referring to a named KYN identity or UI object.
-- Say exactly where human approval occurs.
-- Never use “24/7,” “fully autonomous,” “enterprise-ready,” “exactly once,” or “works while your laptop is closed” for the current build.
+- Lead with the outcome and show the workflow that gets there.
+- Use “engine” for Kiro, OpenCode, or Codex and “bot” for an Ari identity.
+- Explain which service owns model access and sign-in.
+- Say where a person reviews or approves work.
+- Avoid claims of enterprise readiness, unattended publishing, or work that
+  continues after a local host is offline.
 
 ## Primary calls to action
 
-1. Meet your first bot.
-2. See what it can do.
-3. Inspect the engineering.
-4. Start with one real job.
+1. Open Ari.
+2. Explore the workspace.
+3. See how Ari works.
+4. Start with one bot and one real task.

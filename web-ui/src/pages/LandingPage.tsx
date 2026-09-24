@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { KiroGlyph } from "../components/KiroGlyph";
+import { AriGlyph } from "../components/AriGlyph";
 
 type Persona = {
   role: string;
@@ -11,112 +11,112 @@ type Persona = {
 
 const PERSONAS: Persona[] = [
   {
-    role: "The Builder",
-    outcome: "Takes an issue to a reviewed handoff.",
+    role: "Builder",
+    outcome: "Turns a repo task into reviewable work.",
     body:
-      "Give it the outcome and the repo. It works in an isolated checkout, runs your real checks, repairs what fails, and brings back a change another agent has reviewed. Your working tree never moves.",
-    detail: "Build → verify → repair → independent review",
+      "Give a builder a repository, a clear outcome, and the checks that matter. Ari keeps the task on its own branch, runs the checks, and brings the diff back for review.",
+    detail: "Isolated branch · real checks · inspect the diff",
   },
   {
-    role: "The Reviewer",
-    outcome: "Gives every change a clean second look.",
+    role: "Reviewer",
+    outcome: "Adds a second agent before you decide.",
     body:
-      "A separate Kiro inspects the result with fresh context and its own policy. If the reviewer changes the work, KYN catches it. The final handoff still belongs to you.",
-    detail: "Separate context · mutation detection · human decision",
+      "Choose another bot to inspect the change with fresh context. Read its findings and the diff, then decide whether the task is ready to merge into your base branch.",
+    detail: "Independent review · visible findings · your call",
   },
   {
-    role: "The Triage Agent",
-    outcome: "Meets new work where it arrives.",
+    role: "Triage",
+    outcome: "Picks up work from the conversations you use.",
     body:
-      "Mention it in Slack, open a GitHub issue, send a WhatsApp message, or text it on Telegram. It keeps each source thread separate and replies where the conversation started.",
-    detail: "Browser · Slack · GitHub · WhatsApp · email · Telegram",
+      "Route Slack mentions, GitHub issues, WhatsApp messages, Telegram chats, signed email events, or webhooks to the bot that owns the next step.",
+    detail: "Slack · GitHub · WhatsApp · Telegram · email · webhooks",
   },
   {
-    role: "The Operator",
-    outcome: "Owns the checks that should not depend on memory.",
+    role: "Operator",
+    outcome: "Keeps recurring work on a schedule.",
     body:
-      "Give one agent the recurring job: watch a queue, prepare a digest, or inspect a repo on a cadence. KYN remembers what is due and recovers accepted work after a restart.",
-    detail: "One-time or repeating · durable schedule · visible history",
+      "Turn a dependable instruction into a one-time or repeating routine. See its runs, status, and next action in the same place as approvals and active work.",
+    detail: "One-time or recurring · durable run history",
   },
   {
-    role: "The Coordinator",
-    outcome: "Moves one outcome through several specialists.",
+    role: "Coordinator",
+    outcome: "Passes a useful brief between different agents.",
     body:
-      "Describe the outcome in chat or open the Workflow playground. Keep every saved plan in view, drag bot nodes, connect their ports with arrows, inspect the recorded output of each bot, and let independent agents run in parallel while dependent work waits for the right result.",
-    detail: "Saved-plan rail · node-and-arrow DAG · bot outputs",
+      "Hand work between Kiro, OpenCode, and Codex with the goal, recent conversation, and repository evidence attached. Or build a multi-bot plan and follow each result as it comes back.",
+    detail: "Cross-engine handoff · team plans · inspectable results",
   },
 ];
 
 const PRODUCT_PROMISES = [
   {
-    label: "Persistent",
-    title: "The work keeps its context",
-    body: "Each named agent carries its Kiro session, history, and relevant memory into the next conversation.",
+    label: "One workspace",
+    title: "Keep your agent tools together",
+    body: "Create bots for Kiro, OpenCode, and Codex, then pick the right one for the work.",
   },
   {
-    label: "Reachable",
-    title: "Talk from where the work happens",
-    body: "Use the browser, Slack, GitHub, WhatsApp, email, a signed webhook, or Telegram.",
+    label: "One work inbox",
+    title: "See what needs your attention",
+    body: "Bring approvals, coding tasks, agent runs, workflows, and channel events into one review queue.",
   },
   {
-    label: "Governed",
-    title: "Autonomy with a hard edge",
-    body: "Policies, quotas, per-action approvals, isolated workspaces, and an audit trail stay outside the model.",
+    label: "Human-led",
+    title: "Keep the important decisions yours",
+    body: "Review tool approvals, task diffs, handoffs, and plugin access as work moves forward.",
   },
 ];
 
 const PRODUCT_PILLARS = [
   {
-    eyebrow: "Keep the thread",
-    title: "One prompt ends. The job does not have to.",
+    eyebrow: "Choose the right engine",
+    title: "Kiro, OpenCode, and Codex in one crew.",
     body:
-      "KYN gives every agent a durable identity and conversation. Come back tomorrow, switch from browser to phone, or resume after a restart without rebuilding the working context from zero.",
+      "Give each bot its own engine, model settings, tools, workspace, and purpose. Continue with the same bot or hand the work to another engine with a portable brief.",
   },
   {
-    eyebrow: "Run a roster",
-    title: "Use one agent per responsibility.",
+    eyebrow: "See the whole picture",
+    title: "Your work, gathered in one inbox.",
     body:
-      "Keep implementation, review, triage, and operations in separate hands. Each agent gets its own queue, policy, memory, and Kiro session—and several can work at once.",
+      "Find pending approvals, coding tasks, agent runs, workflows, and incoming channel events without hunting through separate panels. Jump straight to the decision or review that is waiting.",
   },
   {
-    eyebrow: "Bring the work to you",
-    title: "Message the same agent from your desk or phone.",
+    eyebrow: "Make changes reviewable",
+    title: "Give coding work a branch and a finish line.",
     body:
-      "A GitHub issue, Slack thread, WhatsApp message, email event, or Telegram chat can reach the agent that owns the job. Replies return to the originating thread.",
+      "A task runs in an isolated worktree, executes the checks you define, and gets an independent review. Inspect its files and diff before approving the handoff and merging it to your base branch.",
   },
   {
-    eyebrow: "Trust the harness",
-    title: "The model proposes. The control plane decides.",
+    eyebrow: "Connect what you need",
+    title: "Browse integrations, then choose what each bot can use.",
     body:
-      "Tool policy, quotas, reload-safe approval routing, workspace isolation, deterministic checks, and final handoffs are enforced by code. Every gate is one decision—never blanket trust.",
+      "Explore the plugin catalogue, configure MCP connections, and bind them to selected bots. Ari asks for approval according to each bot’s policy when a tool needs permission.",
   },
 ];
 
 const FAQS = [
   {
-    question: "Can one bot actually launch work on other bots?",
+    question: "Which agent engines can I use?",
     answer:
-      "Yes. A governed built-in control tool can create, inspect, start, and cancel durable team workflows from the conversation. It can also call a different named bot for one focused result. The same graph can be composed in the Workflow playground, which keeps saved plans in a rail, supports gesture zoom, validates connections, and shows each bot’s recorded output.",
+      "Create bots with Kiro, OpenCode, or Codex. The installed engine handles model reasoning and tool execution; Ari gives bots one workspace for conversations, work, integrations, and review. Each engine keeps its own sign-in and account.",
   },
   {
-    question: "Is KYN another coding model?",
+    question: "Is Ari another coding model?",
     answer:
-      "No. Kiro remains the agentic engine that reasons, writes code, and uses tools. KYN is the independent local control plane that adds durable agents, channels, schedules, coordination, governance, and verified work around Kiro's ACP interface.",
+      "No. Ari is the workspace around your coding agents. It helps you organize bots, route work, connect tools, carry a task between engines, and review important actions.",
   },
   {
-    question: "Does it keep working when my laptop is closed?",
+    question: "Does Ari keep working when my laptop is closed?",
     answer:
-      "Not in the current local-first build. The daemon and Kiro CLI run on a machine you control, so that machine must remain online for background routines and remote channels. A remote deployment is possible, but authentication and network hardening are your responsibility today.",
+      "When Ari is running on your Mac, keep it online for scheduled work and incoming channels. Reach it from another device through a private Tailscale connection. You can also host Ari remotely, with the deployment security configured by you.",
   },
   {
-    question: "Can KYN merge or publish code for me?",
+    question: "Can Ari make coding changes?",
     answer:
-      "Not today. The verified coding lifecycle stops at a human-approved handoff after isolated implementation, deterministic checks, bounded repair, and independent review. It does not push, open a pull request, merge, or publish on its own.",
+      "Ari can run a coding task on its own branch, execute your checks, and ask a separate bot to review it. You inspect the result and approve before Ari merges the reviewed task into its base branch. Ari does not open pull requests or publish changes for you.",
   },
   {
     question: "Where does my data live?",
     answer:
-      "Bot state is stored locally in SQLite under ~/.kyn by default. Secrets remain environment-variable references, and the audit ledger records decisions without storing raw tool payloads.",
+      "In the macOS setup, Ari stores its workspace data locally under ~/.ari. Engine credentials stay with the engine you installed. Plugin secrets are supplied through environment variables, and Ari's audit log records decisions without raw tool payloads.",
   },
 ];
 
@@ -189,15 +189,15 @@ export default function LandingPage({ onEnterConsole, onOpenEngineering, onTryDe
             onClick={() => {
               document.querySelector(".ed")?.scrollTo({ top: 0, behavior: "smooth" });
             }}
-            aria-label="KYN — home"
+            aria-label="Ari — home"
           >
-            <KiroGlyph className="glyph" size={26} tone="ink" />
-            KYN
+            <AriGlyph className="glyph" size={26} tone="ink" />
+            Ari
           </button>
           <nav className="ed-nav-links" aria-label="Primary">
-            <button type="button" onClick={() => scrollTo("why")}>Why KYN</button>
+            <button type="button" onClick={() => scrollTo("why")}>Why Ari</button>
             <button type="button" onClick={() => scrollTo("roster")}>Jobs</button>
-            <button type="button" onClick={onOpenEngineering}>Engineering</button>
+            <button type="button" onClick={onOpenEngineering}>How Ari works</button>
             <button type="button" className="ed-btn ed-btn-primary" onClick={onEnterConsole}>
               Start with a bot
             </button>
@@ -209,7 +209,7 @@ export default function LandingPage({ onEnterConsole, onOpenEngineering, onTryDe
         {/* HERO — paper canvas, ink mark watermark */}
         <section className="ed-hero-stage">
           <div className="ed-hero-canvas" aria-hidden="true">
-            <KiroGlyph className="ed-hero-mark" size={560} tone="ink" />
+            <AriGlyph className="ed-hero-mark" size={560} tone="ink" />
             <div className="ed-hero-vignette" />
           </div>
           <div className="ed-container ed-hero-2col">
@@ -220,7 +220,7 @@ export default function LandingPage({ onEnterConsole, onOpenEngineering, onTryDe
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
             >
-              Persistent agents, orchestrated
+              Your AI crew, ready to work
             </motion.p>
             <motion.h1
               className="ed-hero-h1"
@@ -228,9 +228,9 @@ export default function LandingPage({ onEnterConsole, onOpenEngineering, onTryDe
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.7, delay: 0.06, ease: [0.22, 1, 0.36, 1] }}
             >
-              KYN
+              Your agents.
               <br />
-              <span className="ed-accent-word">beyond the terminal.</span>
+              <span className="ed-accent-word">One steady crew.</span>
             </motion.h1>
             <motion.p
               className="ed-lead"
@@ -238,9 +238,9 @@ export default function LandingPage({ onEnterConsole, onOpenEngineering, onTryDe
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.14 }}
             >
-              Create named agents with clear jobs, durable context, and hard boundaries. Reach
-              them from your browser or phone, run several at once, and stay in control of the
-              decisions that matter.
+              Bring Kiro, OpenCode, and Codex into one thoughtful workspace. Route work to the
+              right bot, keep tasks and approvals in view, and carry a useful handoff wherever the
+              next step belongs.
             </motion.p>
             <motion.div
               className="ed-cta-row"
@@ -249,13 +249,13 @@ export default function LandingPage({ onEnterConsole, onOpenEngineering, onTryDe
               transition={{ duration: 0.6, delay: 0.22 }}
             >
               <button type="button" className="ed-btn ed-btn-primary" onClick={onEnterConsole}>
-                Meet your first bot
+                Open Ari
               </button>
               <button type="button" className="ed-btn ed-btn-secondary" onClick={() => scrollTo("roster")}>
-                See what it can do ↓
+                Explore the workspace ↓
               </button>
               <button type="button" className="ed-btn ed-btn-secondary" onClick={onTryDemo}>
-                Try the shareable demo →
+                See a live product demo →
               </button>
             </motion.div>
             <motion.div
@@ -264,7 +264,7 @@ export default function LandingPage({ onEnterConsole, onOpenEngineering, onTryDe
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.3 }}
             >
-              {["durable sessions", "group chats", "per-tool approvals", "routines", "channels"].map(
+              {["Kiro · OpenCode · Codex", "work inbox", "reviewable tasks", "MCP plugins", "handoffs"].map(
                 (item) => (
                   <span className="ed-hero-chip" key={item}>
                     {item}
@@ -299,12 +299,11 @@ export default function LandingPage({ onEnterConsole, onOpenEngineering, onTryDe
         <section id="why" className="ed-section" style={{ paddingTop: 0 }}>
           <div className="ed-container">
             <Reveal>
-              <p className="ed-eyebrow">Why KYN</p>
-              <h2 className="ed-h2">The agent is only half the product.</h2>
+              <p className="ed-eyebrow">Why Ari</p>
+              <h2 className="ed-h2">The agent is only part of the work.</h2>
               <p className="ed-body ed-body-lead">
-                Real work lasts longer than a prompt. It crosses repos, channels, reviews, and
-                days. KYN supplies the durable system around Kiro so you are not the queue,
-                scheduler, memory, and approval router yourself.
+                Real work moves between people, projects, tools, and days. Ari gives your agents a
+                shared place to pick up context, carry work forward, and bring decisions back to you.
               </p>
             </Reveal>
             <div className="ed-scenes">
@@ -325,11 +324,11 @@ export default function LandingPage({ onEnterConsole, onOpenEngineering, onTryDe
         <section id="roster" className="ed-section" style={{ paddingTop: 0 }}>
           <div className="ed-container">
             <Reveal>
-              <p className="ed-eyebrow">Jobs to hand off</p>
-              <h2 className="ed-h2">Build the roster your work needs.</h2>
+              <p className="ed-eyebrow">Ways to work with Ari</p>
+              <h2 className="ed-h2">Give each bot a job worth returning to.</h2>
               <p className="ed-body ed-body-lead">
-                Start with one durable responsibility, not a generic helper. Add another agent
-                when the work needs a different context, policy, schedule, or point of view.
+                Set up a builder, reviewer, operator, or coordinator around a real responsibility.
+                Choose the engine and tools that fit, then add another bot when the work calls for it.
               </p>
             </Reveal>
 
@@ -350,15 +349,14 @@ export default function LandingPage({ onEnterConsole, onOpenEngineering, onTryDe
         <section className="ed-band">
           <div className="ed-container">
             <Reveal>
-              <p className="ed-eyebrow">The division of work</p>
+              <p className="ed-eyebrow">Ari's role</p>
               <h2 className="ed-h2">
-                Kiro does the work. KYN keeps it moving.
+                Your engines do the work. Ari keeps it moving.
               </h2>
               <p className="ed-body" style={{ marginTop: "1.75rem", fontSize: "1.125rem" }}>
-                Kiro remains the reasoning and tool-use engine. KYN adds the operating layer
-                around it: identity, memory, queues, schedules, channels, coordination, isolated
-                workspaces, approvals, and evidence. It is built for work that should survive the
-                chat window without surrendering the final decision.
+                Kiro, OpenCode, and Codex remain the reasoning and tool-use engines. Ari adds the
+                layer around them: named bots, shared context, a work inbox, schedules, channels,
+                workflows, MCP integrations, isolated coding tasks, and reviewable handoffs.
               </p>
               <button
                 type="button"
@@ -376,11 +374,11 @@ export default function LandingPage({ onEnterConsole, onOpenEngineering, onTryDe
         <section id="start-local" className="ed-section">
           <div className="ed-container">
             <Reveal>
-              <p className="ed-eyebrow">Start local</p>
-              <h2 className="ed-h2">Your first agent is three commands away.</h2>
+              <p className="ed-eyebrow">Start with your crew</p>
+              <h2 className="ed-h2">Choose the agents you already work with.</h2>
               <p className="ed-body ed-body-lead">
-                KYN runs against the Kiro CLI you already use and binds to your machine by
-                default. Create a named agent, open the control room, and hand it a real job.
+                Run Ari locally on your Mac and connect Kiro, OpenCode, or Codex from setup. Your
+                engine sign-in stays with its own CLI; Ari brings their work into one control room.
               </p>
             </Reveal>
 
@@ -396,8 +394,8 @@ export default function LandingPage({ onEnterConsole, onOpenEngineering, onTryDe
                 <pre>
                   <code>
 {`$ `}<span className="cmd">uv sync</span>{` --extra server --extra dev
-$ `}<span className="cmd">uv run kyn bot create</span>{` builder --cwd `}<span className="path">~/your-project</span>{`
-$ `}<span className="cmd">uv run kyn serve</span>{`   `}<span className="cmt">{`# http://127.0.0.1:8765`}</span>
+$ `}<span className="cmd">uv run ari bot create</span>{` builder --cwd `}<span className="path">~/your-project</span>{` --engine opencode
+$ `}<span className="cmd">uv run ari serve</span>{`   `}<span className="cmt">{`# http://127.0.0.1:8765`}</span>
                   </code>
                 </pre>
               </div>
@@ -408,21 +406,21 @@ $ `}<span className="cmd">uv run kyn serve</span>{`   `}<span className="cmt">{`
                 <div>
                   <p className="ed-eyebrow">Start with one job</p>
                   <p className="ed-body">
-                    Define the outcome, the repo, and what must come back to you for approval. Let
-                    the agent complete one useful task before adding schedules or more roles.
+                    Choose an engine, set the project folder, and describe the result you need.
+                    Keep tool access and approvals aligned with the bot's job.
                   </p>
                 </div>
                 <div>
                   <p className="ed-eyebrow">Then grow the roster</p>
                   <p className="ed-body">
-                    Add a reviewer, connect the channel where work arrives, or turn a reliable
-                    prompt into a routine.{" "}
+                    Add another engine, connect the channel where work arrives, install an MCP
+                    integration, or turn a reliable prompt into a routine.{" "}
                     <button
                       type="button"
                       className="ed-inline-link ed-inline-button"
                       onClick={onOpenEngineering}
                     >
-                      See the honest roadmap
+                      Explore how Ari works
                     </button>
                     .
                   </p>
@@ -437,7 +435,7 @@ $ `}<span className="cmd">uv run kyn serve</span>{`   `}<span className="cmt">{`
           <div className="ed-container">
             <Reveal>
               <p className="ed-eyebrow">Questions worth asking</p>
-              <h2 className="ed-h2">Know what runs. Know where it stops.</h2>
+              <h2 className="ed-h2">A workspace with clear edges.</h2>
             </Reveal>
             <div className="ed-faq">
               {FAQS.map((item) => (
@@ -456,19 +454,18 @@ $ `}<span className="cmd">uv run kyn serve</span>{`   `}<span className="cmt">{`
           <div className="ed-footer-grid">
             <div className="ed-footer-col">
               <div className="ed-footer-mark">
-                <KiroGlyph className="glyph" size={22} tone="ink" />
-                KYN
+                <AriGlyph className="glyph" size={22} tone="ink" />
+                Ari
               </div>
               <p className="ed-footer-tag">
-                The local control plane for persistent Kiro agents, recurring work, and governed
-                coding handoffs.
+                One workspace for Kiro, OpenCode, Codex, and the work they take on.
               </p>
             </div>
             <div className="ed-footer-col">
               <p className="ed-eyebrow">Product</p>
               <ul>
                 <li><button type="button" onClick={onEnterConsole}>Console</button></li>
-                <li><button type="button" onClick={() => scrollTo("why")}>Why KYN</button></li>
+                <li><button type="button" onClick={() => scrollTo("why")}>Why Ari</button></li>
                 <li><button type="button" onClick={() => scrollTo("roster")}>Jobs</button></li>
                 <li><button type="button" onClick={onOpenEngineering}>How it works</button></li>
               </ul>
@@ -489,14 +486,14 @@ $ `}<span className="cmd">uv run kyn serve</span>{`   `}<span className="cmt">{`
                 <li>Approvals answered, never dropped</li>
                 <li>Secrets stay in env vars</li>
                 <li>Audit is payload-free</li>
-                <li>Reviewer bot can't push</li>
+                <li>Reviewed tasks merge only after approval</li>
               </ul>
             </div>
             <div className="ed-footer-col">
               <p className="ed-eyebrow">Runtime</p>
               <ul>
                 <li>Loopback binding by default</li>
-                <li>SQLite under ~/.kyn/</li>
+                <li>SQLite under ~/.ari/</li>
                 <li>One controller per data dir</li>
                 <li>Telegram polled, not webhooked</li>
               </ul>
@@ -504,8 +501,7 @@ $ `}<span className="cmd">uv run kyn serve</span>{`   `}<span className="cmt">{`
           </div>
           <div className="ed-footer-bottom">
             <span className="ed-footer-fine">
-              Built independently around Kiro's ACP interface. No source files from any Kiro
-              distribution are included.
+              Ari is an independent product. Kiro, OpenCode, and Codex are their respective owners' products.
             </span>
           </div>
         </div>
