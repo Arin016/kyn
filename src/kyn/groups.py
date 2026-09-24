@@ -501,7 +501,18 @@ class GroupCoordinator:
                             "Send a message to continue.",
                         )
                         return
-                    replied, spoken = await self._speak(group, member, round_index + 1)
+                    # A mention that landed mid-round preempts the rotation: the
+                    # mentioned bot speaks next, exactly once, then the round
+                    # resumes. Consumed on read so a stale override can never
+                    # haunt a later, mention-less turn.
+                    speaker, reason = member, ""
+                    override = self._speakers.pop(group.id, None)
+                    if override is not None:
+                        speaker, reason = override
+                        self.service.set_speaker(group.id, speaker, reason)
+                    replied, spoken = await self._speak(group, speaker, round_index + 1, reason=reason)
+                    if override is not None:
+                        self.service.set_speaker(group.id, None, "")
                     if not replied:
                         # One member failing must not end the conversation;
                         # the next speaker still gets the transcript.
@@ -512,7 +523,7 @@ class GroupCoordinator:
                             group.id,
                             "kyn",
                             "system",
-                            f"{member} marked the shared aim as met. Pause here or keep going.",
+                            f"{speaker} marked the shared aim as met. Pause here or keep going.",
                         )
                         self.service.set_status(group.id, "done")
                         return

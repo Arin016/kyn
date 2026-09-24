@@ -110,6 +110,7 @@ class InteractionStore:
         *,
         bot_name: str | None = None,
         status: InteractionStatus | None = None,
+        run_id: str | None = None,
         limit: int = 100,
     ) -> list[Interaction]:
         clauses: list[str] = []
@@ -120,6 +121,9 @@ class InteractionStore:
         if status is not None:
             clauses.append("status=?")
             args.append(status)
+        if run_id is not None:
+            clauses.append("run_id=?")
+            args.append(run_id)
         sql = "SELECT * FROM interactions"
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)

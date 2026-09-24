@@ -32,8 +32,19 @@ class Store:
     def __init__(self, home: str | Path | None = None) -> None:
         self.home = Path(home).expanduser() if home else default_home()
         self.home.mkdir(parents=True, exist_ok=True)
+        try:
+            # Chat history can hold pasted secrets; keep the whole store
+            # readable only by its owner.
+            os.chmod(self.home, 0o700)
+        except OSError:
+            pass
         self.path = self.home / "kyn.db"
         self._migrate()
+        if self.path.exists():
+            try:
+                os.chmod(self.path, 0o600)
+            except OSError:
+                pass
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:

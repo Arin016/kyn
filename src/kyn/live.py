@@ -21,11 +21,16 @@ class LiveBus:
 
     def publish(self, payload: Mapping[str, Any]) -> None:
         message = dict(payload)
-        stale: list[asyncio.Queue[dict[str, Any]]] = []
-        for queue in self._subscribers:
-            try:
-                queue.put_nowait(message)
-            except asyncio.QueueFull:
-                stale.append(queue)
-        for queue in stale:
-            self._subscribers.discard(queue)
+        for queue in list(self._subscribers):
+            while True:
+                try:
+                    queue.put_nowait(message)
+                    break
+                except asyncio.QueueFull:
+                    # Slow consumer: drop the OLDEST buffered payload, never the
+                    # subscriber. Silently unsubscribing leaves a deaf socket
+                    # that only ever receives pings.
+                    try:
+                        queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        break

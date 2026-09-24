@@ -168,6 +168,13 @@ def _serve(host: str, port: int) -> None:
         port = int(env_port)
     if not 1 <= port <= 65535:
         raise AcpError("port must be between 1 and 65535")
+    if not _is_loopback_host(host) and not os.environ.get("KYN_ACCESS_TOKEN", "").strip():
+        # An unauthenticated control plane on a non-loopback interface exposes
+        # every bot, plugin, policy, and run to the network. Fail closed.
+        raise AcpError(
+            f"refusing to serve unauthenticated on {host!r}: set KYN_ACCESS_TOKEN "
+            "or bind a loopback host (127.0.0.1)"
+        )
     os.environ.setdefault("KYN_CONTROL_URL", f"http://127.0.0.1:{port}")
     try:
         import uvicorn
@@ -179,6 +186,21 @@ def _serve(host: str, port: int) -> None:
             "Run: python3 -m pip install -e '.[server]'"
         ) from exc
     uvicorn.run(create_app(), host=host, port=port, log_level="info")
+
+
+def _is_loopback_host(host: str) -> bool:
+    """True for loopback-only bind targets (fail-closed helper for _serve)."""
+    normalized = (host or "").strip().rstrip(".").casefold()
+    if normalized in {"localhost", "::1", "127.0.0.1"}:
+        return True
+    if normalized.startswith("127."):
+        try:
+            import ipaddress
+
+            return ipaddress.ip_address(normalized).is_loopback
+        except ValueError:
+            return False
+    return False
 
 
 def _serve_hooks(host: str, port: int, upstream_port: int) -> None:

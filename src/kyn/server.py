@@ -29,6 +29,7 @@ from .delegation import (
     PlanNotFound,
 )
 from .plugins import PluginRegistry, PluginRegistryError
+from .plugins import PluginConflictError, PluginNotFoundError
 from .run_store import RunRepository
 from .routines import RoutineNotFound, RoutineStore, Scheduler
 from .memory import SharedMemoryStore
@@ -420,9 +421,9 @@ def create_app(
 
     async def run_interactions(run_id: str) -> list[Mapping[str, Any]]:
         items = await asyncio.to_thread(
-            active_interactions.list, status="pending", limit=500
+            active_interactions.list, status="pending", run_id=run_id, limit=500
         )
-        return [item.summary() for item in items if item.run_id == run_id]
+        return [item.summary() for item in items]
 
     async def channel_interaction_decision(
         interaction_id: str,
@@ -603,6 +604,21 @@ def create_app(
             content={"error": "quota_exceeded", "quota": exc.quota},
         )
 
+    @app.exception_handler(PluginNotFoundError)
+    async def plugin_not_found(
+        _request: Request, _exc: PluginNotFoundError
+    ) -> JSONResponse:
+        return JSONResponse(status_code=404, content={"error": "plugin_not_found"})
+
+    @app.exception_handler(PluginConflictError)
+    async def plugin_conflict(
+        _request: Request, exc: PluginConflictError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
+            content={"error": "plugin_conflict", "detail": str(exc)},
+        )
+
     @app.exception_handler(PluginRegistryError)
     async def plugin_error(_request: Request, exc: PluginRegistryError) -> JSONResponse:
         return JSONResponse(
@@ -693,15 +709,20 @@ def create_app(
     async def create_bot(body: CreateBotBody) -> dict[str, Any]:
         name = _validate_bot_name(body.name)
         cwd = _validate_working_directory(body.cwd)
-        bot = Bot(
-            name=name,
-            cwd=str(cwd),
-            agent=(body.agent or "").strip(),
-            model=(body.model or "").strip(),
-            effort=(body.effort or "").strip(),
-            engine=(body.engine or "kiro").strip(),
-        )
-        active_store.put_bot(bot)
+        try:
+            bot = Bot(
+                name=name,
+                cwd=str(cwd),
+                agent=(body.agent or "").strip(),
+                model=(body.model or "").strip(),
+                effort=(body.effort or "").strip(),
+                engine=(body.engine or "kiro").strip(),
+            )
+            active_store.put_bot(bot)
+        except (TypeError, ValueError) as exc:
+            # Unknown engine ids surface here (normalize_engine); a typo is a
+            # 422, not a 500.
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         ensure_bot_control(active_plugins, bot.name)
         _publish_roster("bots", "created", bot.name)
         return _bot_payload(bot)
@@ -731,6 +752,11 @@ def create_app(
         with active_store.connect() as db:
             cursor = db.execute("DELETE FROM bots WHERE name = ?", (bot.name,))
             deleted = bool(cursor.rowcount)
+            if deleted:
+                # Pending interactions name a bot that no longer exists: they
+                # can never be decided, and unfiltered listings would surface
+                # orphan rows. Audit history is deliberately retained.
+                db.execute("DELETE FROM interactions WHERE bot_name = ?", (bot.name,))
         if not deleted:
             raise HTTPException(status_code=404, detail=f"bot {name!r} was not found")
         _publish_roster("bots", "deleted", bot.name)
@@ -1075,11 +1101,20 @@ def create_app(
         if isinstance(payload, dict):
             events = payload.get("events")
             if isinstance(events, list) and after:
-                payload["events"] = [
-                    event
-                    for event in events
-                    if isinstance(event, dict) and int(event.get("sequence") or 0) > after
-                ]
+                kept: list[dict[str, Any]] = []
+                for event in events:
+                    if not isinstance(event, dict):
+                        continue
+                    try:
+                        sequence = int(event.get("sequence") or 0)
+                    except (TypeError, ValueError):
+                        # Corrupt or foreign event shape: keep it rather than
+                        # 500ing the whole poll window.
+                        kept.append(event)
+                        continue
+                    if sequence > after:
+                        kept.append(event)
+                payload["events"] = kept
             return payload
         return {"run": payload}
 
@@ -1600,7 +1635,7 @@ def create_app(
 
     @app.post("/hooks/slack/{binding_id}")
     async def ingest_slack(binding_id: str, request: Request) -> Any:
-        binding = active_channels.require_binding(binding_id, kind="slack")
+        binding = _hook_binding(active_channels, binding_id, kind="slack")
         raw = await request.body()
         verify_slack(
             raw,
@@ -1622,7 +1657,7 @@ def create_app(
 
     @app.post("/hooks/github/{binding_id}")
     async def ingest_github(binding_id: str, request: Request) -> dict[str, Any]:
-        binding = active_channels.require_binding(binding_id, kind="github")
+        binding = _hook_binding(active_channels, binding_id, kind="github")
         raw = await request.body()
         verify_sha256(
             raw, request.headers.get("x-hub-signature-256", ""), resolve_secret(binding)
@@ -1641,7 +1676,7 @@ def create_app(
 
     @app.get("/hooks/whatsapp/{binding_id}")
     async def verify_whatsapp(binding_id: str, request: Request) -> PlainTextResponse:
-        binding = active_channels.require_binding(binding_id, kind="whatsapp")
+        binding = _hook_binding(active_channels, binding_id, kind="whatsapp")
         mode = request.query_params.get("hub.mode", "")
         supplied = request.query_params.get("hub.verify_token", "")
         challenge = request.query_params.get("hub.challenge", "")
@@ -1652,7 +1687,7 @@ def create_app(
 
     @app.post("/hooks/whatsapp/{binding_id}")
     async def ingest_whatsapp(binding_id: str, request: Request) -> dict[str, Any]:
-        binding = active_channels.require_binding(binding_id, kind="whatsapp")
+        binding = _hook_binding(active_channels, binding_id, kind="whatsapp")
         raw = await request.body()
         verify_sha256(
             raw, request.headers.get("x-hub-signature-256", ""), resolve_secret(binding)
@@ -1670,7 +1705,7 @@ def create_app(
 
     @app.post("/hooks/email/{binding_id}")
     async def ingest_email(binding_id: str, request: Request) -> dict[str, Any]:
-        binding = active_channels.require_binding(binding_id, kind="email")
+        binding = _hook_binding(active_channels, binding_id, kind="email")
         raw = await request.body()
         verify_kiro_webhook(
             raw,
@@ -1685,7 +1720,7 @@ def create_app(
 
     @app.post("/hooks/webhook/{binding_id}")
     async def ingest_generic_webhook(binding_id: str, request: Request) -> dict[str, Any]:
-        binding = active_channels.require_binding(binding_id, kind="webhook")
+        binding = _hook_binding(active_channels, binding_id, kind="webhook")
         raw = await request.body()
         verify_kiro_webhook(
             raw,
@@ -1831,10 +1866,10 @@ def _validate_working_directory(raw_path: str) -> Path:
 
 
 def _require_bot(store: Store, name: str) -> Bot:
-    _validate_bot_name(name)
-    bot = store.get_bot(name)
+    canonical = _validate_bot_name(name)
+    bot = store.get_bot(canonical)
     if bot is None:
-        raise HTTPException(status_code=404, detail=f"bot {name!r} was not found")
+        raise HTTPException(status_code=404, detail=f"bot {canonical!r} was not found")
     return bot
 
 
@@ -1855,6 +1890,19 @@ def _channel_senders_allowlisted(channels: Any, actor: str) -> bool:
     except Exception:
         return False
     return bool(binding is not None and binding.allowed_senders)
+
+
+def _hook_binding(channels: Any, binding_id: str, *, kind: str) -> Any:
+    """Resolve a webhook binding without leaking its existence.
+
+    Missing/wrong-kind bindings raise the same 401 as a bad signature, so
+    probing binding IDs through the public gateway cannot distinguish "no
+    such binding" from "wrong secret".
+    """
+    try:
+        return channels.require_binding(binding_id, kind=kind)
+    except ChannelNotFound as exc:
+        raise ChannelAuthenticationError("invalid channel signature") from exc
 
 
 async def _get_run(engine: Any, run_id: str) -> Any:
