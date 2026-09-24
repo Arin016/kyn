@@ -1397,8 +1397,11 @@ def create_app(
                 status_code=422,
                 detail="status must be pending, resolved or expired",
             )
+        positions = {
+            item.id: index for index, item in enumerate(active_interactions.ask_queue())
+        }
         return [
-            item.summary()
+            {**item.summary(), "queue_position": positions.get(item.id)}
             for item in active_interactions.list(
                 bot_name=bot_name,
                 status=status,  # type: ignore[arg-type]

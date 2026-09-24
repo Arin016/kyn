@@ -86,14 +86,26 @@ function buildItems(data: {
     data.channels.map((channel) => [channel.id, channel.bot_name]),
   );
 
-  for (const interaction of data.interactions) {
+  // Permit line: the oldest pending ask holds the permit (position 0) and
+  // renders first; the rest wait visibly in line. Positions only guide —
+  // every ask stays answerable so a stuck head never blocks the queue.
+  const queued = [...data.interactions].sort(
+    (left, right) => (left.queue_position ?? 999) - (right.queue_position ?? 999),
+  );
+  for (const interaction of queued) {
+    const position = interaction.queue_position;
     items.push({
       id: `approval:${interaction.id}`,
       lane: "needs_you",
       kind: "Approval",
       title: interaction.title || "Tool approval requested",
       detail: `${interaction.bot_name} · ${interaction.tool_name || "Tool"} · ${interaction.actor || "Ari"}`,
-      status: "Waiting for you",
+      status:
+        position === 0
+          ? "Answer first · holding the permit"
+          : typeof position === "number"
+            ? `Waiting · #${position + 1} in line`
+            : "Waiting for you",
       at: interaction.created_at,
       bot: interaction.bot_name,
       interaction,

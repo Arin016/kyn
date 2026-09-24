@@ -34,9 +34,14 @@ wheels = [
 ]
 
 [[package]]
-name = "ari"
+name = "ari-crew"
 version = "0.1.0"
 source = { editable = "." }
+dependencies = [
+    { name = "fastapi" },
+    { name = "uvicorn" },
+    { name = "websockets" },
+]
 
 [package.optional-dependencies]
 dev = [
@@ -51,10 +56,13 @@ server = [
 
 [package.metadata]
 requires-dist = [
+    { name = "fastapi", specifier = ">=0.115,<1" },
     { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.115,<1" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.28,<1" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8,<10" },
+    { name = "uvicorn", specifier = ">=0.34,<1" },
     { name = "uvicorn", marker = "extra == 'server'", specifier = ">=0.34,<1" },
+    { name = "websockets", specifier = ">=14,<16" },
     { name = "websockets", marker = "extra == 'server'", specifier = ">=14,<16" },
 ]
 provides-extras = ["server", "dev"]

@@ -133,6 +133,26 @@ class InteractionStore:
             rows = db.execute(sql, tuple(args)).fetchall()
         return [_interaction(row) for row in rows]
 
+    def ask_queue(self, *, limit: int = 500) -> list[Interaction]:
+        """Pending asks oldest-first: the operator's permit line.
+
+        Position 0 holds the permit (answer it first); the rest wait in
+        line. Derived from creation order on every read, so a restart or a
+        resolved ask automatically promotes the next waiter — no extra
+        state to persist or reconcile.
+        """
+        with self.store.connect() as db:
+            rows = db.execute(
+                """
+                SELECT * FROM interactions
+                WHERE status='pending'
+                ORDER BY created_at ASC, rowid ASC
+                LIMIT ?
+                """,
+                (min(max(int(limit), 1), 500),),
+            ).fetchall()
+        return [_interaction(row) for row in rows]
+
     def resolve(self, interaction_id: str, decision: str, *, actor: str) -> Interaction:
         if decision not in {"once", "reject"}:
             raise ValueError("decision must be once or reject")

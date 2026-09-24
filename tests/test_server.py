@@ -135,6 +135,35 @@ def test_durable_interaction_routes_survive_stream_reconnect(tmp_path: Path) -> 
         assert decided.json()["status"] == "resolved"
 
 
+def test_interaction_queue_positions_promote_on_decide(tmp_path: Path) -> None:
+    store = Store(tmp_path / "store")
+    store.put_bot(Bot("builder", str(tmp_path)))
+    engine = FakeEngine()
+    engine.runs["run-1"] = FakeRun("run-1", "builder", "running")
+    engine.runs["run-2"] = FakeRun("run-2", "builder", "running")
+    app = create_app(store, engine)
+    first = app.state.interactions.create_permission(
+        run_id="run-1", bot_name="builder", actor="api", request_id="p-1",
+        title="First ask", tool_name="one",
+    )
+    second = app.state.interactions.create_permission(
+        run_id="run-2", bot_name="builder", actor="api", request_id="p-2",
+        title="Second ask", tool_name="two",
+    )
+    with _test_client(app) as client:
+        pending = client.get("/api/interactions?status=pending")
+        assert pending.status_code == 200
+        positions = {item["id"]: item["queue_position"] for item in pending.json()}
+        assert positions == {first.id: 0, second.id: 1}
+
+        decided = client.post(f"/api/interactions/{first.id}/decide", json={"decision": "once"})
+        assert decided.status_code == 200
+
+        pending = client.get("/api/interactions?status=pending")
+        positions = {item["id"]: item["queue_position"] for item in pending.json()}
+        assert positions == {second.id: 0}
+
+
 def test_run_list_route_returns_engine_summaries(tmp_path: Path) -> None:
     class ListingEngine(FakeEngine):
         async def list_runs(self, *, limit: int) -> list[dict[str, Any]]:

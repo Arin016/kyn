@@ -38,6 +38,29 @@ def test_interactions_are_durable_idempotent_and_single_decision(tmp_path: Path)
         interactions.resolve(created.id, "reject", actor="again")
 
 
+def test_ask_queue_lines_up_oldest_first(tmp_path: Path) -> None:
+    interactions = InteractionStore(Store(tmp_path / "state"))
+    first = interactions.create_permission(
+        run_id="run-1", bot_name="scout", actor="api", request_id="1",
+        title="One", tool_name="one",
+    )
+    second = interactions.create_permission(
+        run_id="run-2", bot_name="concierge", actor="api", request_id="2",
+        title="Two", tool_name="two",
+    )
+    third = interactions.create_permission(
+        run_id="run-3", bot_name="scout", actor="api", request_id="3",
+        title="Three", tool_name="three",
+    )
+    assert [item.id for item in interactions.ask_queue()] == [first.id, second.id, third.id]
+
+    interactions.resolve(first.id, "once", actor="tester")
+    assert [item.id for item in interactions.ask_queue()] == [second.id, third.id]
+
+    interactions.expire_run("run-2")
+    assert [item.id for item in interactions.ask_queue()] == [third.id]
+
+
 def test_expiring_a_run_closes_only_its_pending_interactions(tmp_path: Path) -> None:
     interactions = InteractionStore(Store(tmp_path / "state"))
     first = interactions.create_permission(

@@ -129,6 +129,8 @@ export interface Interaction {
   decided_by: string;
   created_at: string;
   resolved_at: string;
+  /** Permit-line position for pending asks: 0 holds the permit (answer first). */
+  queue_position?: number | null;
 }
 
 export interface RunSummary {
