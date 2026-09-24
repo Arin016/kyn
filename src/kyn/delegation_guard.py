@@ -39,6 +39,7 @@ FLEET_GATED_TOOLS = frozenset(
         "bind_plugin",
         "unbind_plugin",
         "run_command",
+        "install_catalog_plugin",
     }
 )
 

@@ -49,6 +49,8 @@ FLEET_TOOLS = (
     "list_engine_models",
     "run_command",
     "fleet_audit",
+    "plugin_catalog",
+    "install_catalog_plugin",
 )
 
 CHIEF_NAME = "chief"

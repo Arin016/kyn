@@ -52,6 +52,8 @@ from .coding_lifecycle import (
     CodingLifecycleError,
 )
 from .live import LiveBus
+from .concierge import ensure_concierge
+from .plugin_place import PlaceError, catalog_view, install_template
 from .tasks import TaskStore
 from .tasks import TaskConflict, TaskError
 from .tasks import commit_worktree, create_task_branch
@@ -261,6 +263,17 @@ if FastAPI is not None:
         expected_version: int = Field(ge=1)
 
 
+    class InstallPlaceBody(BaseModel):
+        template_id: str = Field(min_length=1, max_length=64)
+        bot_names: list[str] = Field(min_length=1, max_length=12)
+        config: dict[str, str] = Field(default_factory=dict)
+
+
+    class PluginSecretBody(BaseModel):
+        name: str = Field(min_length=1, max_length=128)
+        value: str = Field(min_length=1, max_length=8192)
+
+
     class CreateTaskBody(BaseModel):
         builder_bot: str = Field(min_length=1, max_length=100)
         reviewer_bot: str = Field(min_length=1, max_length=100)
@@ -349,6 +362,7 @@ def create_app(
     active_plugins = plugins or PluginRegistry(active_store)
     ensure_internal_control(active_store, active_plugins)
     ensure_chief_of_staff(active_store, active_plugins)
+    ensure_concierge(active_store, active_plugins)
     active_routines = routines or RoutineStore(active_store)
     active_delegations = delegations or DelegationStore(active_store)
     active_runs = RunRepository(active_store)
@@ -1327,6 +1341,62 @@ def create_app(
             raise HTTPException(status_code=409, detail="plugin is managed by KYN")
         active_plugins.unbind_plugin(name, plugin_id)
         return {"deleted": True, "bot_name": name, "plugin_id": plugin_id}
+
+    @app.get("/api/plugin-place/catalog")
+    async def plugin_place_catalog() -> list[dict[str, Any]]:
+        """Curated MCP servers with install + secret status."""
+        return _json_safe(catalog_view(active_plugins))
+
+    @app.post("/api/plugin-place/install", status_code=201)
+    async def plugin_place_install(body: InstallPlaceBody) -> dict[str, Any]:
+        """Install a catalog template and bind it to bots in ask mode."""
+        for name in body.bot_names:
+            _require_bot(active_store, name)
+        try:
+            result = await asyncio.to_thread(
+                install_template,
+                active_plugins,
+                active_store,
+                body.template_id.strip(),
+                [name.strip() for name in body.bot_names],
+                dict(body.config),
+            )
+        except PlaceError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return _json_safe(result)
+
+    @app.get("/api/plugins/{plugin_id}/secrets")
+    async def list_plugin_secrets(plugin_id: str) -> dict[str, Any]:
+        """Secret NAMES only — values never leave the vault over the API."""
+        try:
+            names = await asyncio.to_thread(active_plugins.secret_names, plugin_id)
+        except PluginNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="plugin was not found") from exc
+        return {"plugin_id": plugin_id, "secrets": names}
+
+    @app.post("/api/plugins/{plugin_id}/secrets", status_code=201)
+    async def set_plugin_secret(plugin_id: str, body: PluginSecretBody) -> dict[str, Any]:
+        try:
+            await asyncio.to_thread(
+                active_plugins.set_secret, plugin_id, body.name, body.value
+            )
+        except PluginNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="plugin was not found") from exc
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {"plugin_id": plugin_id, "name": body.name.strip(), "stored": True}
+
+    @app.delete("/api/plugins/{plugin_id}/secrets/{name}")
+    async def delete_plugin_secret(plugin_id: str, name: str) -> dict[str, Any]:
+        try:
+            deleted = await asyncio.to_thread(
+                active_plugins.delete_secret, plugin_id, name
+            )
+        except PluginNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="plugin was not found") from exc
+        if not deleted:
+            raise HTTPException(status_code=404, detail="secret was not found")
+        return {"plugin_id": plugin_id, "deleted": True}
 
     @app.get("/api/audit")
     async def list_audit(

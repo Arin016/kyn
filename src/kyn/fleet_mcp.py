@@ -243,6 +243,35 @@ TOOLS = [
             "additionalProperties": False,
         },
     },
+    {
+        "name": "plugin_catalog",
+        "description": (
+            "The Plugin Place: curated MCP servers (GitLab, GitHub, Jira/Confluence, "
+            "Slack, Postgres, filesystem) with install status and missing secrets. "
+            "Read-only. Start here when the operator wants to connect an app."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "install_catalog_plugin",
+        "description": (
+            "Install a Plugin Place template and bind it to named bots in ask mode "
+            "(every first tool use asks the operator for permission). config holds "
+            "template keys (host URLs and other non-secrets); secrets are NEVER "
+            "passed here — the operator pastes them into the Plugin Place secrets "
+            "field, and missing_secrets in the result says what is still needed."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "template_id": {"type": "string"},
+                "bot_names": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 12},
+                "config": {"type": "object", "default": {}},
+            },
+            "required": ["template_id", "bot_names"],
+            "additionalProperties": False,
+        },
+    },
 ]
 
 
@@ -413,6 +442,29 @@ def _call_tool(base: str, caller: str, name: str, args: dict[str, Any]) -> Any:
     if name == "fleet_audit":
         limit = min(max(int(args.get("limit") or 20), 1), 100)
         return _http(base, "GET", f"/api/audit?limit={limit}")
+    if name == "plugin_catalog":
+        return _http(base, "GET", "/api/plugin-place/catalog")
+    if name == "install_catalog_plugin":
+        _authorize(base, caller, name)
+        template_id = _req(args, "template_id")
+        bot_names = args.get("bot_names")
+        if not isinstance(bot_names, list) or not bot_names or not all(
+            isinstance(item, str) and item.strip() for item in bot_names
+        ):
+            raise ValueError("bot_names must be a non-empty list of bot names")
+        config = args.get("config") or {}
+        if not isinstance(config, dict):
+            raise ValueError("config must be an object")
+        return _http(
+            base,
+            "POST",
+            "/api/plugin-place/install",
+            {
+                "template_id": template_id,
+                "bot_names": bot_names,
+                "config": {str(key): str(value) for key, value in config.items()},
+            },
+        )
     raise ValueError(f"unknown fleet tool {name!r}")
 
 
