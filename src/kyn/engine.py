@@ -601,6 +601,7 @@ class Engine:
                 effort=bot.effort,
                 engine=candidate,
                 mcp_servers=bot.mcp_servers,
+                brief=bot.brief,
             )
             try:
                 await asyncio.to_thread(self._store.put_bot, updated)
