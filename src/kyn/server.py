@@ -263,6 +263,28 @@ if FastAPI is not None:
         expected_version: int = Field(ge=1)
 
 
+    class MemoryFactBody(BaseModel):
+        fact: str = Field(min_length=1, max_length=2000)
+        entities: list[str] = Field(default_factory=list, max_length=20)
+        source: str = Field(default="", max_length=500)
+        actor: str = Field(default="api", max_length=100)
+
+
+    class MemorySupersedeBody(BaseModel):
+        fact: str = Field(min_length=1, max_length=2000)
+        entities: list[str] = Field(default_factory=list, max_length=20)
+        source: str = Field(default="", max_length=500)
+        actor: str = Field(default="api", max_length=100)
+
+
+    class MemoryPinBody(BaseModel):
+        pinned: bool = True
+
+
+    class DreamBody(BaseModel):
+        interval_seconds: int = Field(default=86400, ge=3600, le=604800)
+
+
     class InstallPlaceBody(BaseModel):
         template_id: str = Field(min_length=1, max_length=64)
         bot_names: list[str] = Field(min_length=1, max_length=12)
@@ -911,6 +933,42 @@ def create_app(
         _publish_roster("bots", "updated", name)
         return {"bot": name, **_json_safe(result)}
 
+    @app.get("/api/bots/{name}/card")
+    async def bot_agent_card(name: str) -> dict[str, Any]:
+        """A2A-style agent card: capability discovery for interoperable agents.
+
+        Advertises what this bot is, what it can do, and how to task it, so
+        external harnesses can discover and delegate without shared memory.
+        """
+        bot = _require_bot(active_store, name)
+        skills: list[str] = []
+        try:
+            bindings = await asyncio.to_thread(active_plugins.binding_summaries, name)
+            skills = sorted(
+                {
+                    str(item.get("plugin_id") or "")
+                    for item in bindings
+                    if item.get("plugin_id")
+                }
+            )
+        except Exception:
+            skills = []
+        return _json_safe(
+            {
+                "name": bot.name,
+                "description": bot.brief or f"{bot.engine} agent with durable memory",
+                "engine": bot.engine,
+                "model": bot.model,
+                "skills": skills,
+                "protocol": ["acp", "a2a-card/0.1"],
+                "endpoints": {
+                    "turns": f"/api/bots/{bot.name}/turns",
+                    "runs": "/api/runs/{run_id}",
+                    "handoff": f"/api/bots/{bot.name}/handoff",
+                },
+            }
+        )
+
     @app.get("/api/bots/{name}/history")
     async def bot_history(name: str) -> dict[str, Any]:
         _require_bot(active_store, name)
@@ -940,6 +998,128 @@ def create_app(
             active_memory.list_events, name, limit=limit
         )
         return {"bot": name, "events": [event.summary() for event in events]}
+
+    @app.get("/api/bots/{name}/memory/facts")
+    async def list_memory_facts(
+        name: str,
+        q: str = Query(default=""),
+        limit: int = Query(default=50, ge=1, le=500),
+        include_invalid: bool = Query(default=False),
+    ) -> dict[str, Any]:
+        _require_bot(active_store, name)
+        if q.strip():
+            facts = await asyncio.to_thread(
+                active_memory.retrieve_facts, name, q.strip(), limit=limit
+            )
+        else:
+            facts = await asyncio.to_thread(
+                active_memory.list_facts, name, include_invalid=include_invalid, limit=limit
+            )
+        return {"bot": name, "facts": [fact.summary() for fact in facts]}
+
+    @app.post("/api/bots/{name}/memory/facts", status_code=201)
+    async def remember_memory_fact(name: str, body: MemoryFactBody) -> dict[str, Any]:
+        _require_bot(active_store, name)
+        try:
+            fact = await asyncio.to_thread(
+                active_memory.remember,
+                name,
+                body.fact,
+                entities=body.entities,
+                source=body.source,
+                actor=body.actor or "api",
+            )
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return _json_safe(fact.summary())
+
+    @app.post("/api/bots/{name}/memory/facts/{fact_id}/supersede")
+    async def supersede_memory_fact(
+        name: str, fact_id: str, body: MemorySupersedeBody
+    ) -> dict[str, Any]:
+        _require_bot(active_store, name)
+        try:
+            fact = await asyncio.to_thread(
+                active_memory.supersede_fact,
+                fact_id,
+                body.fact,
+                entities=body.entities,
+                source=body.source,
+                actor=body.actor or "api",
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return _json_safe(fact.summary())
+
+    @app.post("/api/bots/{name}/memory/facts/{fact_id}/forget")
+    async def forget_memory_fact(name: str, fact_id: str) -> dict[str, Any]:
+        _require_bot(active_store, name)
+        try:
+            fact = await asyncio.to_thread(active_memory.forget_fact, fact_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return _json_safe(fact.summary())
+
+    @app.post("/api/bots/{name}/memory/facts/{fact_id}/pin")
+    async def pin_memory_fact(name: str, fact_id: str, body: MemoryPinBody) -> dict[str, Any]:
+        _require_bot(active_store, name)
+        try:
+            fact = await asyncio.to_thread(
+                active_memory.pin_fact, fact_id, bool(body.pinned)
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return _json_safe(fact.summary())
+
+    _DREAM_ROUTINE_NAME = "nightly dreaming"
+    _DREAM_PROMPT = (
+        "Dreaming turn: consolidate your memory while the operator sleeps. "
+        "Review your recent turns and memory_search results, then: (1) record "
+        "durable facts (decisions, preferences, lessons) with memory_remember, "
+        "(2) supersede outdated facts by remembering the new one and forgetting "
+        "the old, (3) forget trivia with memory_forget, (4) keep it tight — a "
+        "handful of crisp facts beats a diary. Never record secrets, tokens, or "
+        "anyone else's private data. Reply with a short bullet list of what you "
+        "kept, updated, or dropped."
+    )
+
+    def _dream_summary(routine: Any) -> dict[str, Any]:
+        return {
+            "id": routine.id,
+            "name": routine.name,
+            "bot_name": routine.bot_name,
+            "enabled": routine.enabled,
+            "trigger_kind": routine.trigger_kind,
+            "interval_seconds": routine.interval_seconds,
+            "next_run_at": routine.next_run_at,
+        }
+
+    @app.post("/api/bots/{name}/memory/dream", status_code=201)
+    async def dream_memory(name: str, body: DreamBody) -> dict[str, Any]:
+        """Enable nightly dreaming: a scheduled turn that consolidates memory.
+
+        The routine prompts the bot to review recent turns, distill durable
+        facts via memory_remember, supersede outdated ones, and forget trivia
+        via memory_forget. Idempotent per bot — re-enabling returns the
+        existing dream routine.
+        """
+        bot = _require_bot(active_store, name)
+        for routine in active_routines.list(bot_name=bot.name):
+            if routine.name == _DREAM_ROUTINE_NAME and routine.enabled:
+                return _json_safe(_dream_summary(routine))
+        try:
+            routine = active_routines.create(
+                name=_DREAM_ROUTINE_NAME,
+                bot_name=bot.name,
+                prompt=_DREAM_PROMPT,
+                trigger_kind="interval",
+                interval_seconds=body.interval_seconds,
+            )
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return _json_safe(_dream_summary(routine))
 
     @app.get("/api/bots/{name}/policy")
     async def get_policy(name: str) -> dict[str, Any]:

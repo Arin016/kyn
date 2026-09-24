@@ -552,3 +552,47 @@ def test_group_endpoint_rejects_oversized_note(tmp_path) -> None:
         group_id = created.json()["group"]["id"]
         response = client.put(f"/api/groups/{group_id}/context", json={"note": "x" * 4001})
     assert response.status_code == 422
+
+
+def test_transcript_ranks_relevance_over_recency(store: Store) -> None:
+    add_bots(store, "scout", "writer")
+    engine = ScriptedEngine()
+    coordinator = make_coordinator(store, engine)
+    group = coordinator.service.create_group("Room", "Fix the parser module", ["scout", "writer"])
+    service = coordinator.service
+
+    async def scenario() -> None:
+        # Old but highly relevant to the aim and the speaker.
+        await coordinator.post_message(
+            group.id, "scout, the parser module crashes on empty input", respond=False
+        )
+        # A pile of irrelevant chatter that must not crowd out the above.
+        for index in range(12):
+            await coordinator.post_message(
+                group.id, f"lunch anecdote number {index} about sandwiches", respond=False
+            )
+
+    asyncio.run(scenario())
+    prompt = coordinator._prompt(group, "scout", 1)
+    assert "parser module crashes on empty input" in prompt
+    assert "[#" in prompt  # stable message references
+    # The recent window survives verbatim...
+    assert "lunch anecdote number 11 about sandwiches" in prompt
+    # ...while stale chatter is dropped to protect the budget.
+    assert "lunch anecdote number 0 about sandwiches" not in prompt
+    assert len(prompt) <= coordinator.transcript_chars + 2_000
+
+
+def test_mentioned_member_gets_directed_context(store: Store) -> None:
+    add_bots(store, "scout", "writer")
+    engine = ScriptedEngine({"writer": ["On it."]})
+    coordinator = make_coordinator(store, engine)
+    group = coordinator.service.create_group("Room", "Ship notes", ["scout", "writer"])
+
+    async def scenario() -> None:
+        await coordinator.post_message(group.id, "@writer take the second pass")
+        await coordinator.wait(group.id)
+
+    asyncio.run(scenario())
+    prompt = engine.prompts[0][1]
+    assert "operator @-mentioned you" in prompt

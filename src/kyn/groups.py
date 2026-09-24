@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import re
 import uuid
 from dataclasses import dataclass
@@ -590,7 +591,7 @@ class GroupCoordinator:
     def _prompt(self, group: Group, member: str, round_index: int, *, reason: str = "") -> str:
         everyone = ", ".join(group.members)
         others = ", ".join(name for name in group.members if name != member) or "the operator"
-        transcript = self._transcript(group)
+        transcript = self._transcript(group, member)
         brief = self.service.context_note(group.id)
         directive = (
             "The operator @-mentioned you. Reply to them directly and address only "
@@ -619,11 +620,25 @@ class GroupCoordinator:
             f"If the shared aim is fully met, reply with exactly {DONE_MARKER} on its own line."
         )
 
-    def _transcript(self, group: Group) -> str:
+    def _transcript(self, group: Group, member: str = "") -> str:
+        """Assemble bounded, relevance-ranked context for one speaker.
+
+        Zero-context-pollution discipline: instead of dumping the whole
+        scrollback into every member, each speaker gets the recent window in
+        full (conversational coherence) plus the older messages most relevant
+        to the aim, themselves, and the latest operator steer — capped at
+        ``transcript_chars``. References like [#12] are stable message ids.
+        """
         roster = self.service.members_of(group.id)
         messages = self.service.messages(group.id, limit=MAX_BUFFERED_MESSAGES)
+        if not messages:
+            return ""
+        window = 8
+        recent = messages[-window:]
+        older = messages[:-window]
         lines: list[str] = []
-        for message in messages:
+
+        def render(message: GroupMessage) -> str:
             if message.role == "human":
                 prefix = "operator"
                 mentioned = parse_mentions(message.text, roster)
@@ -631,17 +646,67 @@ class GroupCoordinator:
                     prefix = f"operator (asks: {', '.join(mentioned)})"
             else:
                 prefix = message.author
-            lines.append(f"{prefix}: {_clip(message.text, 600)}")
+            return f"[#{message.id}] {prefix}: {_clip(message.text, 600)}"
+
+        budget = self.transcript_chars
+        for message in recent:
+            lines.append(render(message))
+        used = sum(len(line) + 2 for line in lines)
+        if older and used < budget:
+            # Topical anchors only (aim + speaker + group): follow-up chatter
+            # lives in the recent window, and durable steers belong in memory
+            # facts — scoring older messages against recent chatter terms is
+            # how ubiquitous filler outranks rare on-aim signal.
+            anchors = " ".join([group.aim, group.name, member])
+            query_tokens = _overlap_tokens(anchors)
+            # Inverse document frequency across the older window: ubiquitous
+            # chatter terms ("lunch" in every message) must not outrank a
+            # rare on-aim term ("parser" in one).
+            doc_tokens = [_overlap_tokens(message.text) for message in older]
+            frequency: dict[str, int] = {}
+            for tokens in doc_tokens:
+                for token in tokens:
+                    frequency[token] = frequency.get(token, 0) + 1
+            ranked: list[tuple[float, int, GroupMessage]] = []
+            for position, message in enumerate(older):
+                overlap = query_tokens & doc_tokens[position]
+                if not overlap:
+                    continue
+                weight = sum(
+                    (1.0 + math.log1p(len(token)))
+                    / (1.0 + math.log1p(frequency.get(token, 1)))
+                    for token in overlap
+                )
+                if message.role == "human":
+                    weight += 4
+                if member and member.lower() in message.text.lower():
+                    weight += 6
+                ranked.append((weight, position, message))
+            ranked.sort(key=lambda item: (-item[0], item[1]))
+            picked = sorted(ranked[:12], key=lambda item: item[1])
+            for _weight, _position, message in picked:
+                line = render(message)
+                if used + len(line) + 2 > budget:
+                    break
+                lines.append(line)
+                used += len(line) + 2
         text = "\n\n".join(lines)
-        if len(text) <= self.transcript_chars:
+        if len(text) <= budget:
             return text
-        # Keep the newest context, dropping whole messages from the front.
-        trimmed = text[-self.transcript_chars :]
+        # Hard cap as a backstop (mixed windows can overshoot on long lines).
+        trimmed = text[-budget:]
         pivot = trimmed.find("\n\n")
         return trimmed[pivot + 2 :] if pivot != -1 else trimmed
 
 
 # ---- helpers --------------------------------------------------------------
+
+
+_TOKEN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_./:-]{1,63}")
+
+
+def _overlap_tokens(value: str) -> set[str]:
+    return {match.group(0).lower() for match in _TOKEN.finditer(str(value or ""))}
 
 
 def parse_mentions(text: str, members: Sequence[str]) -> list[str]:
